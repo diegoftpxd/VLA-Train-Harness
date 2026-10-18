@@ -558,7 +558,7 @@ class CoreClient:
     def close(self) -> None: ...
 ```
 
-Para tests se puede reemplazar por un `FakeCoreClient` en memoria con la misma interfaz, y probar el Learner sin levantar ningún otro proceso.
+Para tests se puede reemplazar por un `FakeCoreClient` en memoria con la misma interfaz, y probar el Learner sin levantar ningún otro proceso. Esa interfaz común se expresa como un `Protocol` (`CoreClientProtocol`) que cumplen tanto `CoreClient` como `FakeCoreClient`, así las fuentes y el colector se tipan contra ella. Dentro de la librería del Learner solo `CoreClient` importa `zmq`; el `FakeCoreServer` de prueba es el lado servidor del protocolo y vive en `testing/`. En esta máquina (Windows) el transporte es `tcp://` (ZeroMQ no soporta `ipc://` en Windows); los tests enlazan `tcp://127.0.0.1:0` y leen el puerto asignado.
 
 ### `DataSource`
 
@@ -584,7 +584,13 @@ class EnvRolloutSource(DataSource):
     def __init__(self, collector: RolloutCollector, env_ids: list[str], steps_per_batch: int, group_size: int = 1): ...
 
 class WorldModelRolloutSource(DataSource):
-    def __init__(self, collector: RolloutCollector, start_selector: StartSelector, sequences_per_start: int, horizon: int): ...
+    def __init__(self, collector: RolloutCollector, start_selector: StartSelector,
+                 sequences_per_start: int, horizon: int, num_starts: int = 1): ...
+    # num_starts: cuántos puntos de partida pedir al StartSelector por batch.
+    # Por cada start se generan sequences_per_start secuencias de `horizon` chunks
+    # (open-loop desde el start). Cada secuencia es una fila: su reward es el
+    # retorno de la secuencia y su acción acreditada es la del primer chunk
+    # (vista de bandit contextual para GRPO); group_ids = índice del start.
 
 class MixedSource(DataSource):
     def __init__(self, sources: list[DataSource], weights: list[float]): ...

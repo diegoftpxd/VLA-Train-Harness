@@ -6,6 +6,7 @@ requires-python = ">=3.12"
 dependencies = [
     "vla-common",
     "torch>=2.5",
+    "pyzmq>=27.2.0",
 ]
 
 [project.scripts]
