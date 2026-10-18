@@ -762,19 +762,26 @@ class Learner:
 
 Cada pieza se registra con un nombre y se construye desde el YAML.
 
+Un único registro anidado por `kind` (`policy`, `backbone`, `action_head`, `processor`, `algorithm`, `data_source`, ...) guarda la factory de cada nombre. Así se agregan nuevos `kind` sin tocar la clase.
+
 ```python
+Factory = Callable[..., Any]
+
 class Registry:
-    policies: dict[str, Callable[..., VLAPolicy]]
-    backbones: dict[str, Callable[..., Backbone]]
-    action_heads: dict[str, Callable[..., ActionHead]]
-    processors: dict[str, Callable[..., ObservationProcessor]]
-    algorithms: dict[str, Callable[..., Algorithm]]
-    data_sources: dict[str, Callable[..., DataSource]]
+    _registries: dict[str, dict[str, Factory]] = {}
 
     @classmethod
-    def register(cls, kind: str, name: str): ...   # usado como decorador
+    def register(cls, kind: str, name: str) -> Callable[[Factory], Factory]:
+        """Decorador. Registrar dos veces el mismo (kind, name) lanza ValueError."""
+
     @classmethod
-    def build(cls, kind: str, config: dict): ...
+    def build(cls, kind: str, config: dict) -> Any:
+        """Construye config['type']; el resto de claves van como kwargs de la
+        factory. Un type desconocido lanza KeyError listando los disponibles."""
+
+    @classmethod
+    def available(cls, kind: str) -> list[str]:
+        """Nombres registrados para un kind, ordenados."""
 
 @Registry.register("algorithm", "ppo")
 class PPO(Algorithm): ...
