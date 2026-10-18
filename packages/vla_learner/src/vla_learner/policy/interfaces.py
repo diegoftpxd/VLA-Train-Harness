@@ -64,6 +64,16 @@ class ActionHead(nn.Module, ABC):
     @abstractmethod
     def capabilities(self) -> set[Capability]: ...
 
+    @property
+    @abstractmethod
+    def chunk_size(self) -> int:
+        """Largo del chunk (H) que genera esta cabeza."""
+
+    @property
+    @abstractmethod
+    def action_dim(self) -> int:
+        """Dimensión de cada acción (D)."""
+
     @abstractmethod
     def sample(self, features: Tensor, deterministic: bool) -> tuple[Tensor, Tensor | None, dict]:
         """Devuelve (acciones normalizadas ``[B, H, D]``, log_probs ``[B]`` o None, extras)."""

@@ -250,6 +250,14 @@ class ActionHead(nn.Module, ABC):
     @abstractmethod
     def capabilities(self) -> set[Capability]: ...
 
+    @property
+    @abstractmethod
+    def chunk_size(self) -> int: ...     # H: lo lee ComposedPolicy
+
+    @property
+    @abstractmethod
+    def action_dim(self) -> int: ...     # D: lo lee ComposedPolicy
+
     @abstractmethod
     def sample(self, features: Tensor, deterministic: bool) -> tuple[Tensor, Tensor | None, dict]:
         """Devuelve (acciones normalizadas [B, H, D], log_probs [B] o None, extras)."""
@@ -291,6 +299,8 @@ Cabezas de acción previstas:
 |`DiffusionActionHead`|Denoising iterativo|No|Denoising (MSE sobre ruido)|
 |`FlowMatchingActionHead`|Integración de un campo de velocidad|No|Flow matching|
 
+La `TokenActionHead` de referencia discretiza cada dimensión de forma independiente por posición (no autoregresiva), lo cual basta para las suites; un modelo verdaderamente autoregresivo (OpenVLA) entra como adaptador. Para evitar el redondeo al re-tokenizar en `evaluate_actions`, los ids elegidos viajan en `extras`. Como la discretización es estable (token → acción → token devuelve el mismo token), la consistencia de POL-09 es exacta en fp32.
+
 **Modelos que no se pueden separar.** Si un VLA preentrenado viene como un bloque y no conviene partirlo, se implementa `VLAPolicy` directo con un adaptador (por ejemplo `OpenVLAPolicy`). El resto del Learner no nota la diferencia.
 
 **Congelar y LoRA.** Se decide al construir la política: el factory congela el backbone o le aplica LoRA, y `trainable_parameters()` devuelve solo lo que se entrena. Ni el algoritmo ni el optimizador saben que hay partes congeladas.
@@ -329,7 +339,15 @@ Para RL esto no cambia nada: `evaluate_actions` recibe acciones en unidades real
 
 Pieza reutilizable que usan `ComposedPolicy` y los adaptadores que no traen normalización propia.
 
+Los tres modos se expresan como `norm = (x - center) / scale` (y su inversa), con `scale` protegido contra cero para que las dimensiones constantes no den NaN (`mean_std`: center = media, scale = desv.; `min_max`: center/scale a partir de min/max → [-1, 1]; `quantile`: igual con los cuantiles 1% y 99%).
+
 ```python
+@dataclass
+class ActionStats:
+    mean: Array; std: Array        # cada campo con forma [D]
+    min: Array;  max: Array
+    q01: Array;  q99: Array
+
 class ActionNormalizer(nn.Module):
     def __init__(self, stats: dict[str, ActionStats], mode: Literal["mean_std", "min_max", "quantile"]): ...
 
@@ -694,7 +712,7 @@ checkpoints/step_000500/
 └── training_state.pt       # optimizador, scheduler, paso, semillas
 ```
 
-El model server de evaluación solo lee la carpeta `policy/`. Cada política decide qué guarda ahí: un adaptador de un modelo de Hugging Face puede guardar en su formato original.
+El model server de evaluación solo lee la carpeta `policy/`. Cada política decide qué guarda ahí: un adaptador de un modelo de Hugging Face puede guardar en su formato original. La `ComposedPolicy` de referencia, por ahora, serializa el módulo completo con `torch.save` en `policy/policy.pt` (es un checkpoint local, no el protocolo entre procesos); migrar a `weights.safetensors` + `config.yaml` reconstruido con `Registry` es una mejora posterior.
 
 ### `MetricsLogger`
 
