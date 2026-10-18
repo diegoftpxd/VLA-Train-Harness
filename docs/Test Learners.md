@@ -64,10 +64,10 @@ Viven en un paquete `learner.testing` que todas las suites comparten.
 |`make_observations(n, cameras, seed)`|Observaciones sintéticas reproducibles con imágenes, propiocepción e instrucciones de largo variable|
 |`make_action_chunks(n, chunk_size, action_dim, seed)`|Acciones sintéticas en unidades reales, con escalas distintas por dimensión|
 |`FakeCoreClient`|Implementación en memoria de `CoreClient`. Registra cada llamada recibida para que los tests la inspeccionen|
-|`ToyReachEnv`|Ambiente mínimo dentro de `FakeCoreClient`: un punto en 2D debe llegar a un objetivo. Recompensa = −distancia; `terminated` al llegar; `truncated` a los 20 pasos|
+|`ToyReachEnv`|Ambiente mínimo dentro de `FakeCoreClient`: un punto en 2D debe llegar a un objetivo. La propiocepción de la observación es `[pos_x, pos_y, goal_x, goal_y]` (el objetivo viaja en el estado, para que una política tiny pueda aprender). Recompensa = −distancia; `terminated` al llegar; `truncated` a los 20 pasos|
 |`ToyWorldModel`|Simulador perfecto de `ToyReachEnv`, para probar el camino de `simulate`|
 |`TinyBackbone`|Backbone de pocos parámetros para probar cabezas de acción con `ComposedPolicy`|
-|`StubPolicy`|Política mínima con capacidades configurables, para probar algoritmos sin depender de un modelo real|
+|`StubPolicy`|Política mínima con capacidades configurables, para probar algoritmos sin depender de un modelo real. Es una Gaussiana diagonal con media y desviación aprendibles, independiente de la entrada (solo usa el tamaño de batch): sirve para la mecánica de los algoritmos, no para aprender tareas dependientes del estado|
 
 ## Suites de contrato
 

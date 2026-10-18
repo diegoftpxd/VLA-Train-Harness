@@ -127,8 +127,8 @@ Reglas:
 Cada fase termina con `uv run pytest -m fast`, ruff y pyright en verde, y un commit. No empieces una fase con la anterior en rojo.
 
 1. **Base.** Workspace de uv, `vla_common` (tipos y serialización), `Batch`, `MinibatchIterator`, `Registry`. Tests BAT, MB, REG.
-2. **Herramientas de prueba.** `make_observations`, `make_action_chunks`, `FakeCoreClient`, `ToyReachEnv`, `ToyWorldModel`, `StubPolicy`, `TinyBackbone`.
-3. **Modelo.** Interfaces, `ActionNormalizer`, `ComposedPolicy`, `GaussianActionHead`, `TokenActionHead`, un procesador simple. Suites POL, HEAD, NRM, OBS.
+2. **Herramientas de prueba.** `make_observations`, `make_action_chunks`, `FakeCoreClient`, `ToyReachEnv`, `ToyWorldModel`, `StubPolicy`, `TinyBackbone`. Como `StubPolicy` y `TinyBackbone` implementan las interfaces del modelo (`VLAPolicy`, `Backbone`), estas se adelantan a esta fase (en `policy/interfaces.py`); la Fase 3 agrega las implementaciones concretas.
+3. **Modelo.** Implementaciones concretas sobre las interfaces de la Fase 2: `ActionNormalizer`, `ComposedPolicy`, `GaussianActionHead`, `TokenActionHead`, un procesador simple. Suites POL, HEAD, NRM, OBS.
 4. **Algoritmos.** Estimadores de ventaja, `BehaviorCloning`, `PPO`, `GRPO`, `ReferencePolicy`. Suites ADV, ALG y específicas.
 5. **Datos.** `CoreClient` con ZeroMQ, `FakeCoreServer`, fuentes de datos, `RolloutCollector`. Suites CORE (contra fake y contra el cliente real con `FakeCoreServer`) y DATA.
 6. **Infraestructura.** `OptimizerManager`, `SingleDevice`, `DDPStrategy`, `CheckpointManager`, loggers. Suites OPT, DIST-01/02, CKPT, LOG. `FSDPStrategy` se implementa, pero su test va marcado `heavy`.
