@@ -517,7 +517,10 @@ class GroupRelativeAdvantage(AdvantageEstimator):
 
 class MonteCarloReturn(AdvantageEstimator):
     def __init__(self, gamma: float = 0.99): ...
+    # returns = suma descontada por episodio; advantages = returns - old_values (si hay)
 ```
+
+Los estimadores agrupan las filas por `episode_ids` y las ordenan por `step_ids` antes de calcular, y devuelven el resultado en el orden original. Como el `RolloutBatch` solo guarda `V(s_t)` en `old_values`, el bootstrap del último paso de un episodio truncado usa `V(s_t)` de ese paso como aproximación de `V(s_{t+1})`; cuando la Fase 5 recolecte y guarde un valor de bootstrap propio del estado siguiente, GAE lo usará en su lugar.
 
 ### `ReferencePolicy`
 
