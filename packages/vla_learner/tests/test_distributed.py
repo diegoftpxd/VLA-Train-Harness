@@ -42,6 +42,7 @@ def _ddp_worker(rank: int, world_size: int, puerto: int, cola: mp.Queue) -> None
 
     os.environ["MASTER_ADDR"] = "127.0.0.1"
     os.environ["MASTER_PORT"] = str(puerto)
+    os.environ["USE_LIBUV"] = "0"  # el build de PyTorch en Windows no trae libuv
     dist.init_process_group("gloo", rank=rank, world_size=world_size)
     try:
         estrategia = DDPStrategy("cpu")

@@ -661,6 +661,7 @@ class OptimizerConfig:
     warmup_steps: int = 0
     precision: Literal["fp32", "bf16", "fp16"] = "bf16"
     grad_accumulation: int = 1
+    total_steps: int | None = None   # horizonte del scheduler coseno (lo fija el Learner)
 
 class OptimizerManager:
     def __init__(self, params: Iterable[nn.Parameter], config: OptimizerConfig): ...
@@ -696,6 +697,8 @@ class DDPStrategy(DistributedStrategy): ...
 class FSDPStrategy(DistributedStrategy): ...
 ```
 
+`DDPStrategy` no envuelve la política en `torch` DDP (perdería los métodos de `VLAPolicy`): en `wrap` difunde los pesos desde el proceso principal y registra en cada parámetro un hook post-acumulación que hace all-reduce (promedio) de su gradiente durante el backward. Así los gradientes quedan sincronizados sin tocar `act`/`evaluate_actions`, y tras un paso los pesos son iguales en todos los procesos. En Windows el backend gloo necesita `USE_LIBUV=0`.
+
 ### `CheckpointManager`
 
 Guarda por separado lo que necesita la evaluación y lo que necesita retomar el entrenamiento.
@@ -718,7 +721,7 @@ checkpoints/step_000500/
 ├── policy/                 # escrito por policy.save_pretrained
 │   ├── weights.safetensors # pesos del modelo, incluidas las estadísticas de normalización
 │   └── config.yaml         # lo necesario para reconstruir la política con Registry
-└── training_state.pt       # optimizador, scheduler, paso, semillas
+└── training_state.pt       # pesos, optimizador, scheduler, paso, estado del RNG y config
 ```
 
 El model server de evaluación solo lee la carpeta `policy/`. Cada política decide qué guarda ahí: un adaptador de un modelo de Hugging Face puede guardar en su formato original. La `ComposedPolicy` de referencia, por ahora, serializa el módulo completo con `torch.save` en `policy/policy.pt` (es un checkpoint local, no el protocolo entre procesos); migrar a `weights.safetensors` + `config.yaml` reconstruido con `Registry` es una mejora posterior.
