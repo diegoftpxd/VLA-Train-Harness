@@ -16,12 +16,23 @@ from vla_learner.types import LossOutput
 
 
 class GaussianActionHead(ActionHead):
-    def __init__(self, feature_dim: int, action_dim: int, chunk_size: int) -> None:
+    def __init__(
+        self,
+        feature_dim: int,
+        action_dim: int,
+        chunk_size: int,
+        init_zero: bool = False,
+        init_log_std: float = 0.0,
+    ) -> None:
         super().__init__()
         self._action_dim = action_dim
         self._chunk_size = chunk_size
         self.mean_proj = nn.Linear(feature_dim, chunk_size * action_dim)
-        self.log_std = nn.Parameter(torch.zeros(chunk_size, action_dim))
+        if init_zero:
+            # media inicial = 0: la política arranca neutra (útil para RL)
+            nn.init.zeros_(self.mean_proj.weight)
+            nn.init.zeros_(self.mean_proj.bias)
+        self.log_std = nn.Parameter(torch.full((chunk_size, action_dim), init_log_std))
 
     @property
     def capabilities(self) -> set[Capability]:

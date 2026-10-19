@@ -41,7 +41,7 @@ from vla_learner.policy.normalizer import ActionNormalizer, ActionStats
 from vla_learner.policy.processors import SimpleProcessor
 from vla_learner.registry import Registry
 from vla_learner.testing.fake_core import FakeCoreClient
-from vla_learner.testing.start_selector import ListStartSelector
+from vla_learner.testing.start_selector import ListStartSelector, ResetStartSelector
 from vla_learner.testing.tiny_backbone import TinyBackbone
 
 # --- Registro de piezas -------------------------------------------------
@@ -53,8 +53,14 @@ def _build_tiny_backbone(feature_dim: int = 16, seq_len: int = 1) -> TinyBackbon
 
 
 @Registry.register("action_head", "gaussian")
-def _build_gaussian(feature_dim: int, action_dim: int, chunk_size: int) -> GaussianActionHead:
-    return GaussianActionHead(feature_dim, action_dim, chunk_size)
+def _build_gaussian(
+    feature_dim: int,
+    action_dim: int,
+    chunk_size: int,
+    init_zero: bool = False,
+    init_log_std: float = 0.0,
+) -> GaussianActionHead:
+    return GaussianActionHead(feature_dim, action_dim, chunk_size, init_zero, init_log_std)
 
 
 @Registry.register("action_head", "token")
@@ -163,10 +169,14 @@ def _build_data_source(data: dict, client: CoreClientProtocol, policy) -> DataSo
             data.get("group_size", 1),
         )
     if tipo == "world_model":
-        inicios = [obs for _, obs in client.reset(data["env_ids"])]
+        if data.get("start_selector") == "reset":
+            selector = ResetStartSelector(client)
+        else:
+            inicios = [obs for _, obs in client.reset(data["env_ids"])]
+            selector = ListStartSelector(list(inicios))
         return WorldModelRolloutSource(
             RolloutCollector(client),
-            ListStartSelector(list(inicios)),
+            selector,
             data["sequences_per_start"],
             data["horizon"],
             data.get("num_starts", 1),

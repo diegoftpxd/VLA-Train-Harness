@@ -68,6 +68,8 @@ Viven en un paquete `learner.testing` que todas las suites comparten.
 |`ToyWorldModel`|Simulador perfecto de `ToyReachEnv`, para probar el camino de `simulate`|
 |`TinyBackbone`|Backbone de pocos parámetros para probar cabezas de acción con `ComposedPolicy`|
 |`StubPolicy`|Política mínima con capacidades configurables, para probar algoritmos sin depender de un modelo real. Es una Gaussiana diagonal con media y desviación aprendibles, independiente de la entrada (solo usa el tamaño de batch): sirve para la mecánica de los algoritmos, no para aprender tareas dependientes del estado|
+|`success_rate`|Evalúa una política en `ToyReachEnv` en modo determinista y devuelve la fracción de episodios que llegan al objetivo (para los tests LEARN)|
+|`ResetStartSelector`|`StartSelector` que reinicia ambientes frescos en cada llamada, para dar puntos de partida diversos al entrenar en el WorldModel|
 
 ## Suites de contrato
 
@@ -266,6 +268,8 @@ Tests lentos que comprueban que el sistema completo aprende, no solo que no fall
 |LEARN-05|BC + RL|Partiendo de una política entrenada con BC, el RL no empeora la tasa de éxito|
 
 Estos tests solo usan la política tiny y una cabeza gaussiana o de tokens. Su objetivo es validar algoritmos y datos, no un modelo concreto.
+
+La tasa de éxito se mide con `success_rate` (en `testing/evaluation.py`): corre la política en modo **determinista** (usa la media, no muestrea) sobre episodios de estados distintos. Por eso la política tiny se inicializa con la media en cero (`GaussianActionHead(init_zero=True)`): arranca neutra, su éxito inicial es ~0 y cualquier mejora demuestra aprendizaje. Para que el entrenamiento en el WorldModel generalice (LEARN-04) se usan puntos de partida diversos (`ResetStartSelector`), no unos pocos fijos.
 
 ### Evaluación (EVAL)
 

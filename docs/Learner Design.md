@@ -295,7 +295,7 @@ Cabezas de acción previstas:
 |Cabeza|Cómo genera|`LOG_PROB`|Loss de BC|
 |---|---|---|---|
 |`TokenActionHead`|Acciones discretizadas como tokens, autoregresivo|Sí|Cross-entropy|
-|`GaussianActionHead`|Media y desviación por dimensión|Sí|Log-likelihood negativa|
+|`GaussianActionHead`|Media y desviación por dimensión (init opcional: `init_zero` pone la media en 0 y `init_log_std` fija la desviación inicial, útil para arrancar RL con una política neutra)|Sí|Log-likelihood negativa|
 |`DiffusionActionHead`|Denoising iterativo|No|Denoising (MSE sobre ruido)|
 |`FlowMatchingActionHead`|Integración de un campo de velocidad|No|Flow matching|
 
