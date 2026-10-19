@@ -786,11 +786,13 @@ class Learner:
 
 - `algorithm.required_capabilities` no está contenido en `policy.capabilities`.
 - `algorithm.batch_type` no coincide con `data_source.batch_type`.
-- `policy.processor.required_cameras` pide cámaras que el embodiment no tiene.
+- `policy.processor.required_cameras` pide cámaras que el embodiment no tiene (se comparan contra `LearnerConfig.available_cameras`, si se conocen).
+
+`LearnerConfig` lleva `checkpoint_every`, `seed`, `available_cameras` y `raw` (la configuración resuelta, que va al checkpoint). `resume` carga el último checkpoint (o el indicado) y deja `start_iteration` en la siguiente a la guardada.
 
 ## Construcción desde configuración
 
-Cada pieza se registra con un nombre y se construye desde el YAML.
+Cada pieza se registra con un nombre y se construye desde el YAML. `Learner.from_config` delega en el módulo `builder`, que registra las piezas y arma los componentes; así `learner.py` no importa ninguna implementación concreta (ARCH-03). Los `kind` del `Registry` son `backbone`, `action_head`, `processor`, `policy`, `algorithm`, `advantage` y `data`. El proceso se levanta con `uv run vla-learner --config <archivo>.yaml` (opciones `--iterations` y `--resume`); hay configs tiny de ejemplo en `configs/` (`bc_tiny.yaml`, `ppo_tiny.yaml`), que usan el `FakeCoreClient` (`core: {type: fake}`).
 
 Un único registro anidado por `kind` (`policy`, `backbone`, `action_head`, `processor`, `algorithm`, `data_source`, ...) guarda la factory de cada nombre. Así se agregan nuevos `kind` sin tocar la clase.
 
