@@ -19,7 +19,7 @@ Principios: todo corre en **CPU** con *fakes* livianos y deterministas; nada des
 | **STEP/RESET** | `Core.step`/`reset`: enrutado, recompensa batcheada, registro de transiciones | 4 | `fast` |
 | **SIM** | `Core.simulate`: rollout + score, `source="world_model"` | 5 | `fast` |
 | **FAIL** | Timeouts, caída/reconexión de un componente, reintentos, parada de seguridad; multi-ambiente en paralelo | 6 | `fast` + `distributed` |
-| **E2E** | Learner real conduciendo un Core real con fakes, los tres flujos | 8 | `slow` |
+| **E2E** | Learner real conduciendo un Core real con fakes, los tres flujos | 7 | `slow` |
 
 ## SRV — transporte (Fase 1, implementada)
 
@@ -65,4 +65,4 @@ Cada ABC trae su suite; su *fake* y cualquier implementación real deben pasarla
 
 - **FAIL** (`fast`): a nivel de transporte, un componente colgado (`SilentRouter`, que recibe pero nunca responde) produce `DownstreamTimeout` tras agotar timeout y reintentos; un componente que se recupera en la misma dirección vuelve a responder (reconexión del `DEALER`). A nivel de gateway, un ambiente que no responde (`FlakyEnvironment`, que levanta `DownstreamTimeout` en memoria) se marca no disponible, se le invoca la parada de seguridad y el error se escala a `DownstreamUnavailable`; el resto de los ambientes sigue operando y reusar el caído da `DownstreamUnavailable` sin volver a tocarlo.
 - **distributed**: varios Environment, cada uno su proceso ZeroMQ, atendidos por un solo Core; un `step` enruta cada chunk a su ambiente y devuelve los resultados en el orden de entrada, con una transición por ambiente (test marcado `distributed`).
-- **E2E** (`slow`): el `Learner` real, con `CoreClient`, corre los tres flujos (supervisado, RL en ambiente, RL en world model) contra un `CoreServer(Core(...))` con fakes, y el entrenamiento avanza.
+- **E2E** (`slow`): el `Learner` real, con `CoreClient`, corre los tres flujos (supervisado, RL en ambiente, RL en world model) contra un `CoreServer(Core(...))` con fakes, por el wire ZeroMQ, y el entrenamiento avanza (éxito claramente por encima de la línea base en los tres modos). Los umbrales van con margen por debajo de los de LEARN: E2E prueba la integración de punta a punta, no recalibra la convergencia. Además, un test `fast` comprueba que los configs de ejemplo (`configs/core/*.yaml`) se construyen con `build_core` y responden un round-trip real.

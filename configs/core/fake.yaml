@@ -2,8 +2,10 @@
 #
 #   uv run vla-core --config configs/core/fake.yaml
 #
-# Levanta el Core real (reset/step/get_episode operativos; simulate y
-# sample_supervised llegan en las Fases 5 y 6). Los ambientes se crean al vuelo:
-# cualquier env_id que pida el Learner obtiene un FakeEnvironment reach 2D.
+# Levanta el Core real con la interfaz completa: reset, step, simulate,
+# sample_supervised y get_episode, respaldados por un Environment, WorldModel,
+# Reward Model y Dataset fake (reach 2D, CPU). Los ambientes se crean al vuelo:
+# cualquier env_id que pida el Learner obtiene un FakeEnvironment. Es el Core que
+# conduce la suite de integración extremo a extremo con el Learner real.
 server: { address: "tcp://127.0.0.1:5555" }
 backend: { type: fake, demo_chunk_size: 1 }

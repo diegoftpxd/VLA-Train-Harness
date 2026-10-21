@@ -1,8 +1,10 @@
 # CLAUDE.md
 
-Harness para entrenar modelos VLA (vision-language-action) con aprendizaje supervisado y RL. El proceso **Learner ya está terminado** (primera fase del proyecto). La fase actual es construir el proceso **Core**: el gateway que conecta al Learner con los ambientes, el world model, el reward model y el dataset.
+Harness para entrenar modelos VLA (vision-language-action) con aprendizaje supervisado y RL. El proceso **Learner ya está terminado** (primera fase del proyecto). El proceso **Core** —el gateway que conecta al Learner con los ambientes, el world model, el reward model y el dataset— también está **terminado** (las siete fases del plan, ver "Orden de implementación"). Lo que siga (componentes reales, adaptadores de datasets, evaluación) se aborda cuando se pida.
 
 ## Estado del proyecto
+
+**Terminado — Core (`packages/vla_core`).** Las siete fases del plan: diseño y transporte (`CoreServer`/`dispatch_request`), componentes y clientes `DEALER` (Environment, WorldModel, Reward Model, Dataset, EpisodeStore) con sus fakes, el gateway `Core` (`reset`/`step`/`simulate`/`sample_supervised`/`get_episode`), el gancho de episodios exitosos, el manejo de fallas (timeouts, reconexión, parada de seguridad, multi-ambiente), la CLI `vla-core` con configs de ejemplo y la integración extremo a extremo con el Learner real. Pasa las suites de contrato (`fast`), `distributed` y la E2E (`slow`).
 
 **Terminado — Learner (`packages/vla_learner`).** Todas las clases de `Learner Design.md`: interfaces del modelo, `ComposedPolicy`, cabezas, normalizador, `BehaviorCloning`, `PPO`, `GRPO`, estimadores de ventaja, fuentes de datos, `CoreClient`, infraestructura, `Learner`, `Registry`, CLI, y el adaptador real `OpenVLAPolicy`. Pasa sus suites de contrato (`fast`) y los tests de aprendizaje (`slow`). **No se reescribe**; se toca solo si Core obliga a cambiar el protocolo.
 
@@ -147,7 +149,7 @@ Cada fase termina con `uv run pytest -m fast`, ruff y pyright en verde, y un com
 4. ✅ **`simulate` sobre el WorldModel.** `Core.simulate` resuelve el inicio (observación o `(episode_id, step)`), `WorldModel.encode` + `rollout` (devuelve `StepResult` por chunk, con terminación), puntúa con el mismo Reward Model en una sola llamada. `rollout` se ajustó para devolver `StepResult` (ver `Core Design.md`). Suite SIM (directa y por la red).
 5. ✅ **Dataset supervisado.** `Core.sample_supervised(n, filters?)` delega en el Dataset (`source="dataset"`, acciones en unidades reales, filtro `task`). El gancho `Core.ingest_episode` reinyecta episodios exitosos (`terminated`) sobre `AppendableDataset` (`DatasetNotAppendable` si no lo es). Suite DSET a nivel de Core (incluye round-trip por la red).
 6. ✅ **Fallas y robustez.** `RpcChannel` con timeout + reintentos + reconexión (`DownstreamTimeout`); `Core` escala la caída de un ambiente a `DownstreamUnavailable`, lo marca no disponible e invoca su parada de seguridad sin romper al resto; timeouts/reintentos por componente fijados y configurables (`Core Design.md`, "Manejo de fallas"). Suites FAIL (`fast`) y el test `distributed` (multi-ambiente por la red).
-7. **Integración extremo a extremo.** `vla-core` con configs de ejemplo y el Learner real conduciendo un Core real con fakes por los tres flujos. Suite E2E (marcada `slow`).
+7. ✅ **Integración extremo a extremo.** `vla-core` con configs de ejemplo (`configs/core/*.yaml`, validados por un test `fast`) y el Learner real conduciendo un Core real con fakes por ZeroMQ en los tres flujos. Suite E2E (`slow`): el entrenamiento avanza en supervisado, RL en ambiente y RL en world model.
 
 ## Decisiones abiertas (de `Architecture.md`)
 
