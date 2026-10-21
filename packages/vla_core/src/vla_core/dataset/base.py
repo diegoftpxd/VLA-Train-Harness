@@ -1,15 +1,21 @@
 """Interfaz ``Dataset``: demos supervisadas servidas desde dentro de Core.
 
-Definido en ``docs/core/Core Design.md`` y ``docs/Architecture.md``. En v1 el
-Dataset no es un proceso propio: vive dentro de Core y se accede solo por él
-(``sample_supervised``). Entrega las acciones en **unidades reales**, sin
-normalizar: cada política del Learner normaliza a su manera.
+Definido en ``docs/core/Core Design.md``, ``docs/Architecture.md`` y
+``docs/dataset/Dataset Design.md``. En v1 el Dataset no es un proceso propio:
+vive dentro de Core y se accede solo por él (``sample_supervised``). Entrega las
+acciones en **unidades reales**, sin normalizar: cada política del Learner
+normaliza a su manera.
 
 ``filters`` es un diccionario opcional de criterios (``task``, ``embodiment``,
 ...); cada implementación respeta los que entiende e ignora el resto. Un corpus
 de solo-lectura (Open-X, LeRobot) implementa solo ``Dataset``; un dataset que
 admite reinyectar demos nuevas —el gancho de episodios exitosos (ver
 ``AppendableDataset``)— implementa ``AppendableDataset``.
+
+Esta es la **única frontera** que Core ve: los adaptadores concretos de cada
+formato viven detrás de estas ABCs y se construyen con ``build_dataset`` (ver
+``factory.py``), de modo que Core queda agnóstico del formato y de cómo se
+consulta cada corpus.
 """
 
 from __future__ import annotations
