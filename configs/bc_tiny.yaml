@@ -1,0 +1,25 @@
+# Configuración tiny de ejemplo: Behavior Cloning contra el FakeCoreClient.
+# uv run vla-learner --config configs/bc_tiny.yaml
+seed: 0
+
+core: {type: fake, seed: 0, demo_chunk_size: 1}
+
+policy:
+  type: composed
+  action_dim: 2
+  chunk_size: 1
+  feature_dim: 16
+  backbone: {type: tiny, seq_len: 1}
+  action_head: {type: gaussian}
+  processor: {type: simple, cameras: [front]}
+  normalizer: {mode: mean_std}
+
+algorithm: {type: bc}
+
+data: {type: supervised, batch_size: 8}
+
+optimizer: {name: adamw, lr: 0.001, grad_clip: 1.0, scheduler: null, precision: fp32}
+
+checkpoint: {directory: checkpoints/bc_tiny, every: 50, keep_last: 2}
+
+num_iterations: 5

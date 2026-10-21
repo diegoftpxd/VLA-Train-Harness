@@ -1,0 +1,16 @@
+[project]
+name = "vla-common"
+version = "0.1.0"
+description = "Tipos compartidos y serialización del harness VLA. No depende de torch."
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=1.26",
+    "msgpack>=1.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/vla_common"]

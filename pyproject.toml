@@ -1,0 +1,73 @@
+[project]
+name = "vla-train-harness"
+version = "0.1.0"
+description = "Harness para entrenar modelos VLA con SL y RL (por ahora, solo el proceso Learner)."
+requires-python = ">=3.12"
+dependencies = [
+    "vla-common",
+    "vla-learner",
+]
+
+# Expone el grupo opcional de vla-learner a nivel de workspace, para poder
+# instalarlo desde la raíz con `uv sync --extra openvla`.
+[project.optional-dependencies]
+openvla = ["vla-learner[openvla]"]
+
+# El root es un workspace virtual: no se empaqueta, solo agrupa los paquetes.
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv.sources]
+vla-common = { workspace = true }
+vla-learner = { workspace = true }
+# PyTorch con CUDA 12.4 desde el índice oficial (ver CLAUDE.md).
+torch = [{ index = "pytorch-cu124" }]
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+    "pyright>=1.1.380",
+]
+
+[tool.pytest.ini_options]
+# Por defecto excluye lo que no debe correr en esta máquina. `-m fast` lo sobreescribe.
+addopts = "-m 'not heavy and not gpu and not distributed' --strict-markers"
+markers = [
+    "fast: contratos con modelos tiny, en CPU",
+    "slow: aprendizaje en ToyReachEnv, en CPU",
+    "gpu: dispositivo y precisión mixta con modelos tiny",
+    "distributed: DDP con 2 procesos y backend gloo",
+    "heavy: pesos reales o FSDP multi-GPU; no correr aquí",
+]
+testpaths = [
+    "packages/vla_common/tests",
+    "packages/vla_learner/tests",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+# Los documentos de diseño llevan bloques de código ilustrativos; no los formatea.
+extend-exclude = ["docs"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["vla_common", "vla_learner"]
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "standard"
+venvPath = "."
+venv = ".venv"
+include = ["packages"]
