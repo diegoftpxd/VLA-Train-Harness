@@ -11,13 +11,17 @@ El ambiente es un "reach" en 2D (como ``ToyReachEnv`` del Learner, pero propio d
 
 from __future__ import annotations
 
+import threading
+
 import numpy as np
+import zmq
 
 from vla_common.types import Action, ActionChunk, Observation, StepResult
 from vla_core.core import Core
 from vla_core.dataset import AppendableDataset
 from vla_core.environments import Environment, EnvironmentRegistry, EnvSpec, handle_environment
 from vla_core.episodes import EpisodeManager, InMemoryEpisodeStore
+from vla_core.errors import DownstreamTimeout
 from vla_core.reward import RewardModel, RewardScorer, ScoreItem, handle_reward_model
 from vla_core.rpc import RouterServer, make_handler
 from vla_core.world_model import LatentState, WorldModel, handle_world_model
@@ -130,6 +134,48 @@ class FakeWorldModel(WorldModel):
         return salida
 
 
+class FlakyEnvironment(Environment):
+    """Ambiente caído en memoria: simula un proceso que no responde.
+
+    ``reset``/``step`` levantan ``DownstreamTimeout`` (como lo haría el
+    ``EnvironmentClient`` tras agotar timeout y reintentos), para ejercitar el
+    manejo de fallas de Core sin red. Registra cuántas veces se invocó la parada
+    de seguridad, para verificar la política del robot.
+    """
+
+    def __init__(self, *, fail_reset: bool = False, fail_step: bool = True) -> None:
+        self._fail_reset = fail_reset
+        self._fail_step = fail_step
+        self.emergency_stops = 0
+        self.closed = False
+
+    def reset(self, task: str | None, seed: int | None) -> Observation:
+        if self._fail_reset:
+            raise DownstreamTimeout("ambiente caído en reset")
+        return _observation(np.zeros(2, dtype=np.float32), np.zeros(2, dtype=np.float32))
+
+    def step(self, actions: ActionChunk) -> StepResult:
+        if self._fail_step:
+            raise DownstreamTimeout("ambiente caído en step")
+        return StepResult(
+            observation=_observation(np.zeros(2, dtype=np.float32), np.zeros(2, dtype=np.float32)),
+            reward=None,
+            terminated=False,
+            truncated=False,
+            info={},
+        )
+
+    def close(self) -> None:
+        self.closed = True
+
+    def emergency_stop(self) -> None:
+        self.emergency_stops += 1
+
+    @property
+    def spec(self) -> EnvSpec:
+        return EnvSpec(action_dim=2, cameras=["front"])
+
+
 class FakeRewardModel(RewardModel):
     """Recompensa = distancia negativa del punto a la meta en la observación siguiente."""
 
@@ -190,6 +236,58 @@ def serve_world_model(model: WorldModel, address: str = "tcp://127.0.0.1:0") -> 
 
 def serve_reward_model(model: RewardModel, address: str = "tcp://127.0.0.1:0") -> RouterServer:
     return RouterServer(make_handler(model, handle_reward_model), address)
+
+
+class SilentRouter:
+    """Socket ``ROUTER`` que recibe los pedidos y **nunca** responde.
+
+    Simula un proceso colgado (vivo, pero sin atender): el ``RpcChannel`` del
+    cliente agota su timeout y reintentos y levanta ``DownstreamTimeout``. Sirve
+    para probar el timeout y la reconexión sin depender de tiempos de red.
+    """
+
+    def __init__(self, address: str = "tcp://127.0.0.1:0") -> None:
+        self._requested_address = address
+        self.address = address
+        self._context = zmq.Context.instance()
+        self._socket: zmq.Socket | None = None
+        self._thread: threading.Thread | None = None
+        self._running = False
+
+    def start(self) -> str:
+        socket = self._context.socket(zmq.ROUTER)
+        socket.bind(self._requested_address)
+        self.address = socket.getsockopt_string(zmq.LAST_ENDPOINT)
+        self._socket = socket
+        self._running = True
+        self._thread = threading.Thread(target=self._serve, daemon=True)
+        self._thread.start()
+        return self.address
+
+    def _serve(self) -> None:
+        assert self._socket is not None
+        poller = zmq.Poller()
+        poller.register(self._socket, zmq.POLLIN)
+        while self._running:
+            # Vacía la cola de entrada pero jamás contesta.
+            if dict(poller.poll(timeout=100)).get(self._socket) == zmq.POLLIN:
+                self._socket.recv_multipart()
+
+    def stop(self) -> None:
+        self._running = False
+        if self._thread is not None:
+            self._thread.join(timeout=2.0)
+            self._thread = None
+        if self._socket is not None:
+            self._socket.close(0)
+            self._socket = None
+
+    def __enter__(self) -> SilentRouter:
+        self.start()
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.stop()
 
 
 # -- Ensamblaje de un Core de prueba ----------------------------------------

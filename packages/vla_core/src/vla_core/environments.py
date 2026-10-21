@@ -14,7 +14,7 @@ from typing import Any
 
 from vla_common import wire
 from vla_common.types import ActionChunk, Observation, StepResult
-from vla_core.errors import UnknownEnvironment
+from vla_core.errors import DownstreamTimeout, UnknownEnvironment
 from vla_core.rpc import RpcChannel
 
 
@@ -47,13 +47,22 @@ class Environment(ABC):
 
 
 class EnvironmentRegistry:
-    """Mapa ``env_id`` → ``Environment``. Resuelve; no enruta lógica de Core."""
+    """Mapa ``env_id`` → ``Environment`` con su disponibilidad.
+
+    Resuelve y lleva qué ambientes están disponibles; no enruta lógica de Core.
+    Core marca un ambiente **no disponible** cuando su proceso deja de responder
+    (ver el manejo de fallas en ``Core``), y vuelve a marcarlo disponible si se
+    recupera. ``available`` lista solo los disponibles; ``registered`` los lista
+    todos (para cerrarlos, por ejemplo).
+    """
 
     def __init__(self) -> None:
         self._envs: dict[str, Environment] = {}
+        self._unavailable: set[str] = set()
 
     def register(self, env_id: str, environment: Environment) -> None:
         self._envs[env_id] = environment
+        self._unavailable.discard(env_id)
 
     def get(self, env_id: str) -> Environment:
         if env_id not in self._envs:
@@ -62,7 +71,19 @@ class EnvironmentRegistry:
             )
         return self._envs[env_id]
 
+    def is_available(self, env_id: str) -> bool:
+        return env_id in self._envs and env_id not in self._unavailable
+
+    def mark_unavailable(self, env_id: str) -> None:
+        self._unavailable.add(env_id)
+
+    def mark_available(self, env_id: str) -> None:
+        self._unavailable.discard(env_id)
+
     def available(self) -> list[str]:
+        return sorted(env_id for env_id in self._envs if env_id not in self._unavailable)
+
+    def registered(self) -> list[str]:
         return sorted(self._envs)
 
 
@@ -111,8 +132,12 @@ class EnvironmentClient(Environment):
         if self._closed:
             return
         self._closed = True
+        # El ``close`` es best-effort: si el proceso ya no responde, igual se
+        # libera el socket local sin propagar el timeout (es teardown).
         try:
             self._channel.call({"call": "close"})
+        except (DownstreamTimeout, RuntimeError):
+            pass
         finally:
             self._channel.close()
 

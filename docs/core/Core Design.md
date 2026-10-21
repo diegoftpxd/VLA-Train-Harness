@@ -128,7 +128,11 @@ class EnvironmentRegistry:
     """Mapa env_id -> (Environment, disponibilidad). Resuelve, no enruta lógica."""
     def get(self, env_id: str) -> Environment: ...        # UnknownEnvironment si no existe
     def register(self, env_id: str, env: Environment) -> None: ...
-    def available(self) -> list[str]: ...
+    def is_available(self, env_id: str) -> bool: ...      # registrado y no caído
+    def mark_unavailable(self, env_id: str) -> None: ...  # Core lo marca al caerse
+    def mark_available(self, env_id: str) -> None: ...    # al recuperarse
+    def available(self) -> list[str]: ...                 # solo los disponibles
+    def registered(self) -> list[str]: ...                # todos (p. ej. para close)
 ```
 
 `EnvironmentClient(Environment)` implementa la interfaz hablando por `RpcChannel` a un proceso Environment. `FakeEnvironment(Environment)` la implementa en memoria (p. ej. envolviendo `ToyReachEnv`) para los tests. El registro se puebla desde configuración en v1; `register` queda disponible para auto-registro dinámico más adelante.
@@ -222,7 +226,7 @@ class RpcChannel:
     def call(self, request: dict) -> dict: ...   # DownstreamTimeout si se agotan los reintentos
 ```
 
-Es el gemelo hacia abajo del `CoreClient`: encapsula el socket `DEALER`, el `poll` con timeout, los reintentos y la traducción de fallas a errores de dominio. Lo usan `EnvironmentClient`, `WorldModelClient` y `RewardModelClient`, para no repetir la mecánica de ZeroMQ en cada uno.
+Es el gemelo hacia abajo del `CoreClient`: encapsula el socket `DEALER`, el `poll` con timeout, los reintentos (con reconexión del socket entre intentos) y la traducción de fallas a errores de dominio. Lo usan `EnvironmentClient`, `WorldModelClient` y `RewardModelClient`, para no repetir la mecánica de ZeroMQ en cada uno. El detalle del comportamiento ante fallas y la escalada a `DownstreamUnavailable` están en "Manejo de fallas".
 
 ### Errores de dominio
 
@@ -236,6 +240,28 @@ class DatasetNotAppendable(CoreError): ...   # ingest_episode sobre un Dataset d
 ```
 
 `dispatch_request` captura `CoreError` (y cualquier excepción) y la devuelve como `{ok: False, error}`; el `CoreClient` la vuelve a levantar como `RuntimeError` en el Learner. Nada se cae por un pedido mal formado.
+
+## Manejo de fallas (Fase 6)
+
+Dos niveles, cada uno con una responsabilidad:
+
+**Transporte (`RpcChannel`).** Un solo request confiable: envía, espera `timeout_s`, y ante un silencio reconecta el socket `DEALER` (recrearlo evita que una respuesta tardía desalinee las siguientes) y reintenta hasta `retries` veces. Si **todos** los intentos (`retries + 1`) se agotan, levanta `DownstreamTimeout`. También deja el socket reconectado al salir, así que una llamada posterior a un componente que se recuperó vuelve a funcionar (reconexión). El `close` de los clientes (`EnvironmentClient`, …) es best-effort: no propaga el timeout si el proceso ya no responde.
+
+**Gateway (`Core`).** Core escala el timeout del transporte a una política de disponibilidad, solo para los ambientes (el robot es lo que puede quedar en un estado inseguro). Toda llamada a un Environment pasa por `_usar_ambiente`, que:
+
+1. resuelve el ambiente con `EnvironmentRegistry.get` (autoregistro en el fake; `UnknownEnvironment` si no existe);
+2. si está marcado no disponible, levanta `DownstreamUnavailable` sin tocarlo;
+3. ejecuta la operación y, ante `DownstreamTimeout`, **marca el ambiente no disponible**, invoca su `emergency_stop` (best-effort: no-op en simulador, frenado en el robot; un fallo de la parada no enmascara la caída) y levanta `DownstreamUnavailable`.
+
+Así una caída de un ambiente no arrastra a los demás: el resto sigue disponible y operando. Los timeouts de WorldModel y Reward Model se propagan como `DownstreamTimeout` (no tienen estado de disponibilidad en v1; su caída aborta el `step`/`simulate` en curso y el Learner reintenta).
+
+**Timeouts y reintentos por componente (decisión, antes abierta).** `Architecture.md` los dejaba a la implementación. Se fijan como defaults configurables en el YAML (`timeouts:`), con este criterio: un paso de ambiente es corto y una respuesta perdida suele ser transitoria, así que basta un timeout chico con un reintento; el WorldModel y el Reward Model hacen trabajo más pesado (rollout, un VLM juez), así que llevan un timeout mayor.
+
+| Componente | `timeout_s` | `retries` | Motivo |
+|---|---|---|---|
+| Environment | 5 | 1 | `step`/`reset` cortos; una pérdida suele ser transitoria |
+| WorldModel | 10 | 1 | `rollout` de varias secuencias es más pesado |
+| Reward Model | 10 | 1 | batch de `score`, posiblemente un VLM |
 
 ## Flujos
 
@@ -305,7 +331,7 @@ packages/vla_core/
 
 - **Dónde vive `CoreInterface`.** Recomendado: moverla a `vla_common.protocol` y reexportarla desde `vla_learner`. Alternativa: que `vla_core` declare una `Protocol` equivalente. (Se resuelve en la Fase 1.)
 - **`Registry` compartido vs. builder propio de Core.** Por ahora, builder propio; subir `Registry` a `vla_common` solo si se quiere el mismo mecanismo por nombre en los dos procesos.
-- **Timeouts y reintentos por componente.** Valores por defecto en la config; `Architecture.md` los deja a la implementación. Fijar los defaults y su motivo en la Fase 7 (fallas).
+- ~~**Timeouts y reintentos por componente.**~~ **Resuelto (Fase 6):** defaults configurables por componente, con su motivo, en "Manejo de fallas".
 - **Persistencia del `EpisodeStore`.** `InMemoryEpisodeStore` para v1; una variante en disco (para reusar episodios como datos supervisados y entrenar el WorldModel) cuando se pida.
 - **Registro de ambientes dinámico.** v1 lo puebla desde config; el auto-registro (`register` por mensaje) queda definido pero sin implementar hasta que haga falta.
 ```

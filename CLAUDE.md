@@ -146,12 +146,12 @@ Cada fase termina con `uv run pytest -m fast`, ruff y pyright en verde, y un com
 3. ✅ **Gateway Core: ciclo de episodios.** `Core.reset`, `Core.step` (enruta por ambiente, respeta la regla de episodio terminado, batchea `score` una vez, registra transiciones con `source="env"`) y `Core.get_episode`. Absorbió el `reset`/`step` que el plan tenía aparte. La suite CORE del Learner se reusa contra el Core real (incluye CORE-03, episodio terminado).
 4. ✅ **`simulate` sobre el WorldModel.** `Core.simulate` resuelve el inicio (observación o `(episode_id, step)`), `WorldModel.encode` + `rollout` (devuelve `StepResult` por chunk, con terminación), puntúa con el mismo Reward Model en una sola llamada. `rollout` se ajustó para devolver `StepResult` (ver `Core Design.md`). Suite SIM (directa y por la red).
 5. ✅ **Dataset supervisado.** `Core.sample_supervised(n, filters?)` delega en el Dataset (`source="dataset"`, acciones en unidades reales, filtro `task`). El gancho `Core.ingest_episode` reinyecta episodios exitosos (`terminated`) sobre `AppendableDataset` (`DatasetNotAppendable` si no lo es). Suite DSET a nivel de Core (incluye round-trip por la red).
-6. **Fallas y robustez.** Timeouts, caída y reconexión de un Environment, reintentos, parada de seguridad; multi-ambiente en paralelo. Suites FAIL y el test `distributed`.
+6. ✅ **Fallas y robustez.** `RpcChannel` con timeout + reintentos + reconexión (`DownstreamTimeout`); `Core` escala la caída de un ambiente a `DownstreamUnavailable`, lo marca no disponible e invoca su parada de seguridad sin romper al resto; timeouts/reintentos por componente fijados y configurables (`Core Design.md`, "Manejo de fallas"). Suites FAIL (`fast`) y el test `distributed` (multi-ambiente por la red).
 7. **Integración extremo a extremo.** `vla-core` con configs de ejemplo y el Learner real conduciendo un Core real con fakes por los tres flujos. Suite E2E (marcada `slow`).
 
 ## Decisiones abiertas (de `Architecture.md`)
 
-- **Timeouts y política de reintentos de Core por componente.** `Architecture.md` las deja "a decidir en la implementación". Fíjalas en `Core Design.md` con su motivo y hazlas configurables.
+- ~~**Timeouts y política de reintentos de Core por componente.**~~ **Resuelto (Fase 6):** fijados con su motivo y configurables en `Core Design.md` ("Manejo de fallas"): Environment 5 s / 1 reintento; WorldModel y Reward Model 10 s / 1 reintento.
 - **Recompensas sobre el WorldModel.** Para `simulate`, Core decodifica o recibe observaciones predichas y las pasa al mismo Reward Model, para que las escalas de recompensa real e imaginada coincidan. Define en el diseño dónde ocurre la decodificación.
 - **Memoria de WorldModel y Reward Model en la misma GPU.** Fuera de alcance mientras sean fakes; dejar anotado para cuando entren los reales.
 

@@ -6,19 +6,27 @@ cada método es una secuencia corta de llamadas a colaboradores. No abre sockets
 no simula física, no puntúa ni guarda transiciones a mano: lo pide.
 
 Estado de avance: ``reset``, ``step`` (con recompensa), ``get_episode`` (Fase 3),
-``simulate`` (Fase 4) y ``sample_supervised`` + el gancho ``ingest_episode``
-(Fase 5) están implementados.
+``simulate`` (Fase 4), ``sample_supervised`` + el gancho ``ingest_episode``
+(Fase 5) y el manejo de caídas de ambiente (Fase 6: timeout → no disponible +
+parada de seguridad) están implementados.
 """
 
 from __future__ import annotations
 
 import dataclasses
+from collections.abc import Callable
+from typing import Any
 
 from vla_common.types import ActionChunk, Observation, StepResult, Transition
 from vla_core.dataset import AppendableDataset, Dataset
-from vla_core.environments import EnvironmentRegistry
+from vla_core.environments import Environment, EnvironmentRegistry
 from vla_core.episodes import EpisodeManager, EpisodeStore
-from vla_core.errors import DatasetNotAppendable, EpisodeAlreadyDone
+from vla_core.errors import (
+    DatasetNotAppendable,
+    DownstreamTimeout,
+    DownstreamUnavailable,
+    EpisodeAlreadyDone,
+)
 from vla_core.reward import RewardScorer, ScoreItem
 from vla_core.world_model import WorldModel
 
@@ -45,7 +53,7 @@ class Core:
     ) -> list[tuple[str, Observation]]:
         salida: list[tuple[str, Observation]] = []
         for env_id in env_ids:
-            obs = self._environments.get(env_id).reset(task, seed)
+            obs = self._usar_ambiente(env_id, lambda env: env.reset(task, seed))
             episode_id = self._episodes.open(env_id, obs)
             salida.append((episode_id, obs))
         return salida
@@ -53,8 +61,13 @@ class Core:
     def step(
         self, env_ids: list[str], actions: list[ActionChunk], with_reward: bool
     ) -> list[StepResult]:
-        # Regla de episodio: no se puede pisar un episodio ya terminado.
+        # Pre-chequeo antes de tocar ningún ambiente: disponibilidad y regla de
+        # episodio (no se puede pisar un episodio ya terminado).
         for env_id in env_ids:
+            if not self._environments.is_available(env_id):
+                raise DownstreamUnavailable(
+                    f"ambiente {env_id!r} no disponible; hace falta recuperarlo"
+                )
             if self._episodes.is_done(env_id):
                 raise EpisodeAlreadyDone(
                     f"el episodio de {env_id!r} ya terminó; hace falta reset()"
@@ -64,7 +77,7 @@ class Core:
         pendientes: list[tuple[str, ActionChunk, Observation, StepResult]] = []
         for env_id, chunk in zip(env_ids, actions, strict=True):
             previa = self._episodes.last_observation(env_id)
-            resultado = self._environments.get(env_id).step(chunk)
+            resultado = self._usar_ambiente(env_id, lambda env, c=chunk: env.step(c))
             pendientes.append((env_id, chunk, previa, resultado))
 
         # Una sola llamada a score para todo el batch (regla "un score por paso").
@@ -142,6 +155,40 @@ class Core:
             salida[i][j] = dataclasses.replace(salida[i][j], reward=recompensa)
         return salida
 
+    def _usar_ambiente(self, env_id: str, operacion: Callable[[Environment], Any]) -> Any:
+        """Ejecuta ``operacion(env)`` manejando la caída del ambiente.
+
+        Si el ambiente ya está marcado no disponible, levanta
+        ``DownstreamUnavailable`` sin tocarlo. Si no responde (su cliente
+        ``DEALER`` agotó timeout y reintentos → ``DownstreamTimeout``), Core lo
+        escala: marca el ambiente no disponible, invoca su parada de seguridad
+        (best-effort; no-op en un simulador, frenado en el robot real) y levanta
+        ``DownstreamUnavailable``. El resto de los ambientes sigue intacto.
+        """
+        # ``get`` resuelve el ambiente (o lo autoregistra, en el registro fake, o
+        # levanta ``UnknownEnvironment`` si no existe). La disponibilidad se
+        # chequea después: solo un ambiente ya resuelto puede estar "caído".
+        env = self._environments.get(env_id)
+        if not self._environments.is_available(env_id):
+            raise DownstreamUnavailable(f"ambiente {env_id!r} no disponible")
+        try:
+            return operacion(env)
+        except DownstreamTimeout as error:
+            self._environments.mark_unavailable(env_id)
+            self._parada_de_seguridad(env)
+            raise DownstreamUnavailable(
+                f"ambiente {env_id!r} no respondió; marcado no disponible"
+            ) from error
+
+    @staticmethod
+    def _parada_de_seguridad(env: Environment) -> None:
+        # La parada es best-effort: si el ambiente caído tampoco atiende la
+        # parada, no se enmascara la falla original.
+        try:
+            env.emergency_stop()
+        except Exception:  # noqa: BLE001 - best-effort
+            pass
+
     def _resolve_start(self, start: Observation | tuple[str, int]) -> Observation:
         if isinstance(start, Observation):
             return start
@@ -186,5 +233,6 @@ class Core:
         return self._store.get(episode_id)
 
     def close(self) -> None:
-        for env_id in self._environments.available():
+        # Cierra todos los ambientes registrados, disponibles o no.
+        for env_id in self._environments.registered():
             self._environments.get(env_id).close()
