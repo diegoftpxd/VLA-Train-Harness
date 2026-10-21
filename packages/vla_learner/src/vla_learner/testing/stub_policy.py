@@ -1,6 +1,6 @@
 """``StubPolicy``: política mínima para probar algoritmos sin un modelo real.
 
-Definida en ``docs/Test Learners.md``. Es una Gaussiana diagonal con media y
+Definida en ``docs/learner/Test Learners.md``. Es una Gaussiana diagonal con media y
 desviación aprendibles, **independiente de la entrada**: solo usa el tamaño de
 batch para dar la forma. No aprende tareas dependientes del estado —para eso
 está la política tiny de la Fase 3—, pero basta para ejercitar la mecánica de

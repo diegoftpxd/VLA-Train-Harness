@@ -5,6 +5,7 @@ requires-python = ">=3.12"
 [manifest]
 members = [
     "vla-common",
+    "vla-core",
     "vla-learner",
     "vla-train-harness",
 ]
@@ -1384,6 +1385,25 @@ requires-dist = [
 ]
 
 [[package]]
+name = "vla-core"
+version = "0.1.0"
+source = { editable = "packages/vla_core" }
+dependencies = [
+    { name = "numpy" },
+    { name = "pyyaml" },
+    { name = "pyzmq" },
+    { name = "vla-common" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy", specifier = ">=2.0" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
+    { name = "pyzmq", specifier = ">=27.2.0" },
+    { name = "vla-common", editable = "packages/vla_common" },
+]
+
+[[package]]
 name = "vla-learner"
 version = "0.1.0"
 source = { editable = "packages/vla_learner" }
@@ -1423,6 +1443,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "vla-common" },
+    { name = "vla-core" },
     { name = "vla-learner" },
 ]
 
@@ -1441,6 +1462,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "vla-common", editable = "packages/vla_common" },
+    { name = "vla-core", editable = "packages/vla_core" },
     { name = "vla-learner", editable = "packages/vla_learner" },
     { name = "vla-learner", extras = ["openvla"], marker = "extra == 'openvla'", editable = "packages/vla_learner" },
 ]

@@ -1,6 +1,6 @@
 """Interfaces del modelo del Learner.
 
-Definidas en ``docs/Learner Design.md`` (sección "Modelo"). Son las únicas que
+Definidas en ``docs/learner/Learner Design.md`` (sección "Modelo"). Son las únicas que
 el resto del Learner usa: todo modelo concreto (``ComposedPolicy`` o un
 adaptador) las implementa. En la Fase 2 se adelantan porque ``StubPolicy`` y
 ``TinyBackbone`` (herramientas de prueba) las implementan.

@@ -1,6 +1,6 @@
 """Tipos internos del Learner, agrupados en batch con tensores de torch.
 
-Definidos en ``docs/Learner Design.md`` (sección "Tipos internos"). Los tipos
+Definidos en ``docs/learner/Learner Design.md`` (sección "Tipos internos"). Los tipos
 del protocolo (``Observation``, ``Action``, ``ActionChunk``, ``Transition``)
 viven en ``vla_common``; aquí se agregan los que trabajan con tensores.
 

@@ -1,6 +1,6 @@
 """Interfaz ``Algorithm``.
 
-Definida en ``docs/Learner Design.md``. Cada algoritmo declara qué datos
+Definida en ``docs/learner/Learner Design.md``. Cada algoritmo declara qué datos
 necesita, qué capacidades exige del modelo, cómo prepara el batch y cómo calcula
 la loss. Nunca toca el optimizador.
 """

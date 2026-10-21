@@ -1,7 +1,7 @@
 """Adaptadores de modelos VLA preentrenados a la interfaz ``VLAPolicy``.
 
 Un adaptador envuelve un modelo que viene como un bloque y no conviene partir en
-backbone + cabeza (ver ``docs/Learner Design.md``, "Modelos que no se pueden
+backbone + cabeza (ver ``docs/learner/Learner Design.md``, "Modelos que no se pueden
 separar"). El resto del Learner no nota la diferencia.
 
 El módulo ``openvla`` importa ``transformers`` solo dentro de

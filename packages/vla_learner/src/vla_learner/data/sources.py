@@ -1,6 +1,6 @@
 """Fuentes de datos: entregan el siguiente batch al Learner.
 
-Definidas en ``docs/Learner Design.md``. ``SupervisedSource`` tira de demos;
+Definidas en ``docs/learner/Learner Design.md``. ``SupervisedSource`` tira de demos;
 ``EnvRolloutSource`` y ``WorldModelRolloutSource`` usan el ``RolloutCollector``;
 ``MixedSource`` combina fuentes del mismo tipo de batch.
 """

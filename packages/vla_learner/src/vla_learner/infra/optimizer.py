@@ -1,6 +1,6 @@
 """``OptimizerManager``: todo lo que pasa después de calcular la loss.
 
-Definido en ``docs/Learner Design.md``. Concentra backward (con escala si fp16),
+Definido en ``docs/learner/Learner Design.md``. Concentra backward (con escala si fp16),
 acumulación de gradientes, clipping, paso del optimizador, scheduler y
 ``zero_grad``. Es la **única** clase que llama a ``backward()`` y a ``step()``
 (lo verifica ARCH-02).

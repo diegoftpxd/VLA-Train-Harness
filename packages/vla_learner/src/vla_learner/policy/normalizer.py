@@ -1,6 +1,6 @@
 """``ActionNormalizer``: normaliza acciones dentro de una política.
 
-Definido en ``docs/Learner Design.md`` (sección "Normalización de acciones").
+Definido en ``docs/learner/Learner Design.md`` (sección "Normalización de acciones").
 El resto del harness trabaja en unidades reales; cada política normaliza a su
 manera. ``ComposedPolicy`` y los adaptadores sin normalización propia usan esta
 pieza. Las estadísticas se guardan como buffers, así viajan con los pesos.

@@ -4,13 +4,13 @@ OpenVLA (https://huggingface.co/openvla/openvla-7b) es un VLA autoregresivo
 (Llama-2 7B + SigLIP/DINOv2) que predice **una** acción de 7 dimensiones por
 paso, discretizando cada dimensión en 256 bins mapeados a los últimos 256 ids
 del vocabulario de Llama. No se puede ver como "backbone + cabeza", así que se
-implementa ``VLAPolicy`` directo (``docs/Learner Design.md``, sección "Modelos
+implementa ``VLAPolicy`` directo (``docs/learner/Learner Design.md``, sección "Modelos
 que no se pueden separar": se anticipaba justamente ``OpenVLAPolicy``).
 
 Capacidades: ``LOG_PROB`` y ``ENTROPY``. **No** tiene cabeza de valor, así que es
 compatible con BC y GRPO, no con PPO (que necesita ``VALUE``).
 
-**Normalización dentro de la política.** Como fija ``docs/Learner Design.md``
+**Normalización dentro de la política.** Como fija ``docs/learner/Learner Design.md``
 (sección "Normalización de acciones"), el resto del harness trabaja en unidades
 reales; OpenVLA normaliza cada dimensión a ``[-1, 1]`` con las estadísticas
 ``q01``/``q99`` del dataset elegido (``unnorm_key``) y una máscara que indica qué
@@ -321,7 +321,7 @@ class OpenVLAPolicy(VLAPolicy):
         moved = self._move_inputs(inputs)
         if extras is not None and "action_token_ids" in extras:
             # Reusa los ids elegidos al actuar: evita el redondeo de re-tokenizar
-            # (misma idea que ``extras`` en ``docs/Learner Design.md``).
+            # (misma idea que ``extras`` en ``docs/learner/Learner Design.md``).
             token_ids = extras["action_token_ids"].to(self._device, dtype=torch.long)
         else:
             norm = self._normalize(actions.to(self._device))

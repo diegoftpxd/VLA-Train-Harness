@@ -1,6 +1,6 @@
 """``TinyBackbone``: backbone de pocos parámetros para probar cabezas de acción.
 
-Definido en ``docs/Test Learners.md``. Aplana y concatena todos los tensores de
+Definido en ``docs/learner/Test Learners.md``. Aplana y concatena todos los tensores de
 la entrada y los proyecta a ``feature_dim`` con una capa lineal perezosa (así no
 depende del esquema exacto del procesador). Devuelve features ``[B, T, F]``.
 """

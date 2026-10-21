@@ -1,6 +1,6 @@
 """``PPO``: Proximal Policy Optimization con ventajas de un ``AdvantageEstimator``.
 
-Definido en ``docs/Learner Design.md``. La pérdida de política usa el objetivo
+Definido en ``docs/learner/Learner Design.md``. La pérdida de política usa el objetivo
 recortado; la de valor, el error cuadrático (con ``value_clip`` opcional). Corta
 las épocas cuando el KL aproximado supera ``target_kl``.
 """

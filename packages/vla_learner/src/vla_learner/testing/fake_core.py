@@ -1,6 +1,6 @@
 """``FakeCoreClient``: implementación en memoria de la interfaz de Core.
 
-Definido en ``docs/Learner Design.md`` y ``docs/Test Learners.md``. Tiene la
+Definido en ``docs/learner/Learner Design.md`` y ``docs/learner/Test Learners.md``. Tiene la
 misma interfaz que el ``CoreClient`` real (Fase 5), pero resuelve todo en
 memoria con ``ToyReachEnv`` y ``ToyWorldModel``, sin red ni ZeroMQ. Registra
 cada llamada en ``self.calls`` para que los tests la inspeccionen.

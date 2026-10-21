@@ -1,6 +1,6 @@
 """``SimpleProcessor``: un procesador de observación mínimo pero completo.
 
-Definido en ``docs/Learner Design.md`` (Fase 3, "un procesador simple").
+Definido en ``docs/learner/Learner Design.md`` (Fase 3, "un procesador simple").
 Convierte una lista de ``Observation`` en un ``ModelInput`` con:
 
 - ``image.<cam>``: ``[B, C, H, W]`` por cada cámara requerida.

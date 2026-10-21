@@ -8,7 +8,7 @@ el mismo token (HEAD-04).
 Nota de diseño: el modelo real (p. ej. OpenVLA) genera los tokens de forma
 autoregresiva. Esta cabeza de referencia los predice de forma independiente por
 posición, lo cual basta para los contratos; un modelo autoregresivo entra como
-adaptador (ver ``docs/Learner Design.md``). Para evitar errores de redondeo al
+adaptador (ver ``docs/learner/Learner Design.md``). Para evitar errores de redondeo al
 re-tokenizar en ``evaluate_actions``, los ids elegidos viajan en ``extras``.
 """
 

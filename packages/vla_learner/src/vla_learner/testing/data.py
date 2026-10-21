@@ -1,6 +1,6 @@
 """Generadores de datos sintéticos y reproducibles para los tests.
 
-Definidos en ``docs/Test Learners.md``. No dependen de ningún modelo: producen
+Definidos en ``docs/learner/Test Learners.md``. No dependen de ningún modelo: producen
 los tipos de ``vla_common`` con numpy.
 """
 

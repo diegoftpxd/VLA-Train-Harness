@@ -1,6 +1,6 @@
 """``GRPO``: Group Relative Policy Optimization.
 
-Definido en ``docs/Learner Design.md``. No usa cabeza de valor: compara cada
+Definido en ``docs/learner/Learner Design.md``. No usa cabeza de valor: compara cada
 rollout con otros del mismo grupo (mismo punto de partida). Reusa el objetivo
 recortado de PPO y, opcionalmente, agrega un término KL contra una referencia
 congelada.

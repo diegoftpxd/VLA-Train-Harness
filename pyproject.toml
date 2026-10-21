@@ -1,11 +1,12 @@
 [project]
 name = "vla-train-harness"
 version = "0.1.0"
-description = "Harness para entrenar modelos VLA con SL y RL (por ahora, solo el proceso Learner)."
+description = "Harness para entrenar modelos VLA con SL y RL (procesos Learner y Core)."
 requires-python = ">=3.12"
 dependencies = [
     "vla-common",
     "vla-learner",
+    "vla-core",
 ]
 
 # Expone el grupo opcional de vla-learner a nivel de workspace, para poder
@@ -23,6 +24,7 @@ members = ["packages/*"]
 [tool.uv.sources]
 vla-common = { workspace = true }
 vla-learner = { workspace = true }
+vla-core = { workspace = true }
 # PyTorch con CUDA 12.4 desde el índice oficial (ver CLAUDE.md).
 torch = [{ index = "pytorch-cu124" }]
 
@@ -51,6 +53,7 @@ markers = [
 testpaths = [
     "packages/vla_common/tests",
     "packages/vla_learner/tests",
+    "packages/vla_core/tests",
 ]
 
 [tool.ruff]
@@ -63,7 +66,7 @@ extend-exclude = ["docs"]
 select = ["E", "F", "I", "UP", "B"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["vla_common", "vla_learner"]
+known-first-party = ["vla_common", "vla_learner", "vla_core"]
 
 [tool.pyright]
 pythonVersion = "3.12"
