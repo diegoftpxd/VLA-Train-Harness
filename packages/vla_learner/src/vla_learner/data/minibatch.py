@@ -1,6 +1,6 @@
 """Partir cualquier ``Batch`` en minibatches.
 
-Definido en ``docs/Learner Design.md``. En cada iteración el Learner recibe un
+Definido en ``docs/learner/Learner Design.md``. En cada iteración el Learner recibe un
 batch y, según el algoritmo, lo recorre en partes más chicas una o varias
 veces (PPO: varias pasadas; BC: una). La lógica de partir es la misma sin
 importar el tipo de batch, así que vive en una sola clase: solo usa

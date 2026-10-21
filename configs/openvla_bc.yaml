@@ -31,7 +31,7 @@ data: {type: supervised, batch_size: 8}
 
 # lr bajo, típico de fine-tuning de un VLA grande. Con 4 GB no entra el modelo
 # completo; para entrenar con poca VRAM conviene congelar o aplicar LoRA (ver
-# docs/Learner Design.md, "Congelar y LoRA") — no implementado aún para OpenVLA.
+# docs/learner/Learner Design.md, "Congelar y LoRA") — no implementado aún para OpenVLA.
 optimizer: {name: adamw, lr: 0.00005, grad_clip: 1.0, scheduler: null, precision: bf16}
 
 checkpoint: {directory: checkpoints/openvla_bc, every: 200, keep_last: 2}

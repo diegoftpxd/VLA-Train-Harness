@@ -1,6 +1,6 @@
 """Estimadores de ventaja: de recompensas a ventajas y retornos.
 
-Definidos en ``docs/Learner Design.md``. Trabajan sobre un ``RolloutBatch`` cuyas
+Definidos en ``docs/learner/Learner Design.md``. Trabajan sobre un ``RolloutBatch`` cuyas
 filas pueden venir de varios episodios y desordenadas: se agrupan por
 ``episode_ids`` y se ordenan por ``step_ids`` antes de calcular, y el resultado
 se devuelve en el orden original de las filas.

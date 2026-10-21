@@ -1,6 +1,6 @@
 """``Learner``: orquesta todo y corre el loop de entrenamiento.
 
-Definido en ``docs/Learner Design.md``. No tiene lógica de modelo, de loss ni de
+Definido en ``docs/learner/Learner Design.md``. No tiene lógica de modelo, de loss ni de
 red: conecta las piezas y corre el loop. No importa ninguna implementación
 concreta de ``VLAPolicy``, ``Backbone`` ni ``ActionHead`` (lo verifica ARCH-03):
 ``from_config`` delega la construcción en ``builder``, que usa el ``Registry``.

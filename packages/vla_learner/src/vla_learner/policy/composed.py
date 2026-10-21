@@ -1,6 +1,6 @@
 """``ComposedPolicy``: implementa ``VLAPolicy`` con backbone + cabezas.
 
-Definido en ``docs/Learner Design.md``. La mayoría de los VLAs se ven como
+Definido en ``docs/learner/Learner Design.md``. La mayoría de los VLAs se ven como
 backbone + cabeza de acción (+ cabeza de valor opcional). Esta clase arma una
 ``VLAPolicy`` a partir de esas piezas, normalizando las acciones con
 ``ActionNormalizer``: ``act`` desnormaliza la salida de la cabeza, y

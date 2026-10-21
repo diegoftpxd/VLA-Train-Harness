@@ -1,6 +1,6 @@
 """``CheckpointManager``: guardar y cargar estado de entrenamiento.
 
-Definido en ``docs/Learner Design.md``. Separa lo que necesita la evaluación
+Definido en ``docs/learner/Learner Design.md``. Separa lo que necesita la evaluación
 (carpeta ``policy/``, escrita por ``policy.save_pretrained``) de lo que necesita
 retomar el entrenamiento (``training_state.pt``: pesos, optimizador, paso y
 estado del RNG, para que ``resume`` sea exacto).

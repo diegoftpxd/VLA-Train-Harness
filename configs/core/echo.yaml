@@ -1,0 +1,10 @@
+# Config mínima de Core para la Fase 1 (andamiaje de transporte).
+#
+#   uv run vla-core --config configs/core/echo.yaml
+#
+# Usa el backend estático de prueba: responde con datos canónicos, sin
+# componentes reales. Sirve para levantar el proceso y verificar el transporte.
+# El gateway Core real (ambientes, world model, reward model, dataset) llega en
+# fases posteriores y reemplaza este backend.
+server: { address: "tcp://127.0.0.1:5555" }
+backend: { type: static }

@@ -1,6 +1,6 @@
 """``DistributedStrategy``: una GPU, DDP o FSDP.
 
-Definido en ``docs/Learner Design.md``. Abstrae cómo se reparten modelo y
+Definido en ``docs/learner/Learner Design.md``. Abstrae cómo se reparten modelo y
 gradientes entre procesos, para que el resto del Learner no cambie.
 
 ``DDPStrategy`` no envuelve la política en ``torch`` DDP (perdería los métodos de

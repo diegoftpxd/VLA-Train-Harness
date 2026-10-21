@@ -1,6 +1,6 @@
 """``CoreClient``: la única clase que habla por la red (ZeroMQ).
 
-Definido en ``docs/Architecture.md`` y ``docs/Learner Design.md``. Expone la
+Definido en ``docs/Architecture.md`` y ``docs/learner/Learner Design.md``. Expone la
 interfaz de Core y es el único módulo que importa ``zmq`` (lo verifica ARCH-01).
 Arma los mensajes con ``vla_common.wire`` + ``vla_common.serialization`` (sin
 pickle) y usa un socket ``DEALER`` con timeout y sin bloqueo.
@@ -8,40 +8,17 @@ pickle) y usa un socket ``DEALER`` con timeout y sin bloqueo.
 
 from __future__ import annotations
 
-from typing import Any, Protocol
+from typing import Any
 
 import zmq
 
-from vla_common import wire
+from vla_common import CoreInterface, wire
 from vla_common.serialization import decode, encode
 from vla_common.types import ActionChunk, Observation, StepResult, Transition
 
-
-class CoreClientProtocol(Protocol):
-    """Interfaz de Core. La cumplen ``CoreClient`` (red) y ``FakeCoreClient`` (memoria)."""
-
-    def reset(
-        self, env_ids: list[str], task: str | None = ..., seed: int | None = ...
-    ) -> list[tuple[str, Observation]]: ...
-
-    def step(
-        self, env_ids: list[str], actions: list[ActionChunk], with_reward: bool
-    ) -> list[StepResult]: ...
-
-    def simulate(
-        self,
-        start: Observation | tuple[str, int],
-        action_sequences: list[list[ActionChunk]],
-        with_reward: bool,
-    ) -> list[list[StepResult]]: ...
-
-    def sample_supervised(
-        self, n: int, filters: dict | None = ...
-    ) -> list[tuple[Observation, ActionChunk]]: ...
-
-    def get_episode(self, episode_id: str) -> list[Transition]: ...
-
-    def close(self) -> None: ...
+# El contrato de Core vive en ``vla_common`` (``CoreInterface``); se mantiene el
+# nombre ``CoreClientProtocol`` como alias para el código del Learner que ya lo usa.
+CoreClientProtocol = CoreInterface
 
 
 class CoreClient:

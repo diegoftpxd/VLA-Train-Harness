@@ -1,6 +1,6 @@
 """``MetricsLogger`` y sus implementaciones.
 
-Definido en ``docs/Learner Design.md``. Solo el proceso principal publica
+Definido en ``docs/learner/Learner Design.md``. Solo el proceso principal publica
 (``is_main``); en los demás, ``log`` no hace nada (LOG-01). ``WandbLogger`` y
 ``TensorBoardLogger`` importan su dependencia de forma perezosa, así la base del
 harness no las necesita.

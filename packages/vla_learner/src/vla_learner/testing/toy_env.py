@@ -1,6 +1,6 @@
 """``ToyReachEnv`` y ``ToyWorldModel``: un problema mínimo de control 2D.
 
-Definidos en ``docs/Test Learners.md``. Un punto en 2D debe llegar a un
+Definidos en ``docs/learner/Test Learners.md``. Un punto en 2D debe llegar a un
 objetivo. La observación lleva en la propiocepción la posición y el objetivo,
 ``[pos_x, pos_y, goal_x, goal_y]``, para que una política tiny pueda aprender a
 moverse hacia el objetivo. La recompensa es ``-distancia``; ``terminated`` al

@@ -1,6 +1,6 @@
 """Construcción de piezas del Learner a partir de su nombre en la configuración.
 
-Definido en ``docs/Learner Design.md`` (sección "Construcción desde
+Definido en ``docs/learner/Learner Design.md`` (sección "Construcción desde
 configuración"). Cambiar de modelo o de algoritmo es cambiar un nombre en el
 YAML: cada pieza se registra con un ``kind`` (``policy``, ``algorithm``, ...) y
 un ``name``, y se construye con ``Registry.build``.

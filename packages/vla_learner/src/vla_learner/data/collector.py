@@ -1,6 +1,6 @@
 """``RolloutCollector``: el loop de reset/act/step que produce rollouts.
 
-Definido en ``docs/Learner Design.md``. Es la única clase que llama
+Definido en ``docs/learner/Learner Design.md``. Es la única clase que llama
 ``policy.act``. Pone la política en modo ``eval`` mientras recolecta y la
 devuelve a su modo previo al terminar; todo bajo ``no_grad``, así no deja grafo
 ni gradientes (DATA-09). Como ``act`` ya devuelve unidades reales, pasar a
