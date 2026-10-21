@@ -13,6 +13,11 @@ dependencies = [
 [project.scripts]
 vla-core = "vla_core.cli:main"
 
+[project.optional-dependencies]
+lerobot = [
+    "lerobot>=0.1",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

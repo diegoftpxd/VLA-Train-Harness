@@ -203,9 +203,12 @@ rama `Dataset`.
    corriendo `DatasetContract` en `fast`. `build_core` inyecta el `dataset` del YAML en el
    Core fake (`make_fake_core(dataset=...)`); config `configs/core/local.yaml` validada por
    `test_configs.py`.
-3. **`LeRobotDataset` (grupo opcional).** `uv add --optional lerobot ...`, implementar
-   `dataset/lerobot.py` con el mapeo documentado, config `configs/core/lerobot.yaml`, y una
-   suite marcada `heavy` (no se corre aquí). Documentar el mapeo de cámaras/proprio/acciones.
+3. ✅ **`LeRobotDataset` (grupo opcional).** Grupo opcional uv `lerobot` en
+   `packages/vla_core/pyproject.toml` (`uv.lock` regenerado), `dataset/lerobot.py` con el
+   mapeo documentado (import perezoso; no entra al venv base), `type: lerobot` en la factory,
+   config `configs/core/lerobot.yaml` y `test_dataset_lerobot.py` marcada `heavy` (gated por
+   `VLA_LEROBOT_REPO_ID`, no corre aquí). En `fast`, `test_dataset_factory.py` verifica que
+   construir `lerobot` sin el grupo da un `ImportError` claro.
 4. **`OpenXDataset` (opcional, posterior).** Solo cuando se pida: `uv add --optional openx`,
    `dataset/openx.py` (RLDS/TFDS, filtro `embodiment`), suite `heavy`. Puede quedar como stub.
 5. **Docs + alcance.** Mantener este documento al día; actualizar `docs/dataset/README.md`,
