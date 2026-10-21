@@ -37,7 +37,7 @@ Si al implementar necesitas desviarte del diseño (una firma, un tipo, una clase
 **Fuera (no implementar sin que se pida):**
 
 - **Environment, WorldModel y Reward Model reales** (simuladores, robot, pesos reales, VLM juez). Se reemplazan por fakes CPU. El WorldModel se asume preentrenado y congelado, y su entrenamiento es fuera de este harness.
-- **El Dataset real** (demos de un corpus concreto, p. ej. Open-X / LeRobot). Se usa un Dataset fake; el adaptador real va en un grupo opcional cuando se pida.
+- **El Dataset real.** Los adaptadores ya implementados son `local` (layout on-disk, sin dependencias, corre en `fast`) y `lerobot` (corpus LeRobot, grupo opcional uv `lerobot`, suite `heavy`), detrás de la factory `build_dataset` que mantiene a Core agnóstico del formato (ver `docs/dataset/Dataset Design.md`). Queda **fuera** el adaptador `openx` (Open-X Embodiment, tensorflow): se implementa cuando se pida.
 - `EvalModelServer` / `PredictModelServer` y todo lo de evaluación: es una etapa posterior, fuera de este harness (ver `Architecture.md`, sección Evaluación).
 - Adaptadores de modelos reales nuevos del Learner (π0, Octo), `DiffusionActionHead` / `FlowMatchingActionHead`. El adaptador `OpenVLAPolicy` ya existe; los demás no se escriben sin que se pidan.
 - Memoria compartida para imágenes, migración a Ray o gRPC: solo si una medición lo justifica (ver `Architecture.md`).

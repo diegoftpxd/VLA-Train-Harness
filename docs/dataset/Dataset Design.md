@@ -211,9 +211,9 @@ rama `Dataset`.
    construir `lerobot` sin el grupo da un `ImportError` claro.
 4. **`OpenXDataset` (opcional, posterior).** Solo cuando se pida: `uv add --optional openx`,
    `dataset/openx.py` (RLDS/TFDS, filtro `embodiment`), suite `heavy`. Puede quedar como stub.
-5. **Docs + alcance.** Mantener este documento al día; actualizar `docs/dataset/README.md`,
-   la sección "Datos" de `Core Design.md` y el "Alcance" de `CLAUDE.md` (mover los adaptadores
-   reales de "fuera" a "dentro", con su estado).
+5. ✅ **Docs + alcance.** Actualizados `docs/dataset/README.md`, la sección "Datos" y el
+   diagrama de estructura de `Core Design.md` (`dataset.py` → `dataset/`) y el "Alcance" de
+   `CLAUDE.md` (`local` y `lerobot` implementados; solo `openx` queda fuera).
 
 ## Desviaciones respecto al diseño previo
 

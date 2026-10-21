@@ -215,6 +215,8 @@ class AppendableDataset(Dataset):
 
 Vive dentro de Core. Entrega acciones en unidades reales, sin normalizar. `filters` es un diccionario opcional de criterios (`task`, `embodiment`, …); cada implementación respeta los que entiende e ignora el resto. `FakeDataset` genera pares deterministas (como hoy hace `FakeCoreClient.sample_supervised`) y respeta el filtro `task` (la instrucción de los pares).
 
+**Adaptadores concretos.** El `Dataset`/`AppendableDataset` (ABC) es la única frontera que Core ve; los formatos concretos viven detrás, elegidos por la factory `build_dataset(config)` según `type` (ver [[Dataset Design]]). Disponibles: `fake` (en memoria), `local` (layout on-disk, sin dependencias) y `lerobot` (corpus LeRobot, grupo opcional uv). Core queda así agnóstico del formato y de cómo se consulta cada corpus.
+
 **Gancho de episodios exitosos (Fase 5).** `AppendableDataset` separa la capacidad de **reinyectar** demos de la de solo leerlas: un corpus real de solo-lectura implementa solo `Dataset`; un dataset que acepta demos nuevas implementa `AppendableDataset`. Sobre esa capacidad, `Core.ingest_episode(episode_id)` toma las transiciones que Core registró para ese episodio, aplica el filtro de éxito (el episodio terminó por `terminated`, es decir alcanzó la meta, no por `truncated`) y agrega sus pares `(observación, acción)` al Dataset; devuelve cuántos agregó (`0` si no fue exitoso) y levanta `DatasetNotAppendable` si el Dataset no es agregable. Solo reinyecta lo real del almacén (`source="env"`), nunca transiciones imaginadas. El gancho vive en Core (es Core quien registró los episodios), apoyado en `AppendableDataset`; no es parte del `CoreInterface` que el Learner invoca por el protocolo.
 
 ### Red: `RpcChannel`
@@ -310,7 +312,7 @@ packages/vla_core/
     world_model.py          # WorldModel (ABC), WorldModelClient, LatentState
     reward.py               # RewardModel (ABC), RewardModelClient, RewardScorer, ScoreItem
     episodes.py             # EpisodeManager, EpisodeStore (ABC), InMemoryEpisodeStore
-    dataset.py              # Dataset (ABC)
+    dataset/                # Dataset/AppendableDataset (ABC), build_dataset (factory), LocalDataset, LeRobotDataset
     rpc.py                  # RpcChannel
     errors.py               # CoreError y subclases
     builder.py              # build_core(config)
