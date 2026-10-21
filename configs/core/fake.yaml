@@ -1,0 +1,9 @@
+# Core con el gateway real y todos los componentes fake en memoria.
+#
+#   uv run vla-core --config configs/core/fake.yaml
+#
+# Levanta el Core real (reset/step/get_episode operativos; simulate y
+# sample_supervised llegan en las Fases 5 y 6). Los ambientes se crean al vuelo:
+# cualquier env_id que pida el Learner obtiene un FakeEnvironment reach 2D.
+server: { address: "tcp://127.0.0.1:5555" }
+backend: { type: fake, demo_chunk_size: 1 }

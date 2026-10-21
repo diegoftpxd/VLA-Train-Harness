@@ -141,14 +141,13 @@ Reglas:
 
 Cada fase termina con `uv run pytest -m fast`, ruff y pyright en verde, y un commit. No empieces una fase con la anterior en rojo. El trabajo va en la rama `Core`.
 
-1. **Diseño y base.** Escribir `docs/core/Core Design.md` y `docs/core/Test Core.md` a partir de `Architecture.md`. Crear el paquete `vla_core` en el workspace de uv (CLI `vla-core`, sin torch). Servidor `ROUTER` mínimo que reutiliza `vla_common` y responde `ok`/`error`. Comprobar round-trips de cada llamada contra el `CoreClient` real. Suites SRV/PROTO.
-2. **Componentes y clientes hacia abajo.** Interfaces que Core consume (Environment, WorldModel, Reward Model, Dataset, almacén de episodios) y sus clientes `DEALER`. Fakes en memoria y como servidores ZeroMQ. Registro de ambientes con specs declaradas al registrarse. Suites de cada interfaz.
-3. **Episodios.** Estado por episodio (paso actual, observación anterior) y almacén de episodios (`append`/`get`), con `source` en cada transición. `get_episode`. Suites EP/STORE.
-4. **`reset` y `step` con recompensa.** `reset(env_ids, task?, seed?)` crea episodios y devuelve observaciones iniciales. `step(env_ids, actions, with_reward)`: enruta por ambiente, respeta las reglas de episodio, batchea `score` una vez, registra transiciones y devuelve `StepResult`. Suites RESET/STEP.
-5. **`simulate` sobre el WorldModel.** `encode` + `rollout` por secuencia, decodificar observaciones predichas, puntuar con el mismo Reward Model, marcar `source="world_model"`. Suite SIM.
-6. **Dataset supervisado.** Dataset dentro de Core (`source="dataset"`, acciones en unidades reales), `sample_supervised(n, filters?)`, y el gancho para agregar episodios exitosos filtrados. Suite DSET.
-7. **Fallas y robustez.** Timeouts, caída y reconexión de un Environment, reintentos, parada de seguridad; multi-ambiente en paralelo. Suites FAIL y el test `distributed`.
-8. **Integración extremo a extremo.** `vla-core` con configs de ejemplo y el Learner real conduciendo un Core real con fakes por los tres flujos. Suite E2E (marcada `slow`).
+1. ✅ **Diseño y base.** `docs/core/Core Design.md` y `docs/core/Test Core.md`. Paquete `vla_core` (CLI `vla-core`, sin torch). Servidor `ROUTER` que reutiliza `vla_common` y responde `ok`/`error`, con round-trips contra el `CoreClient` real. Suite SRV.
+2. ✅ **Componentes y clientes hacia abajo.** Interfaces que Core consume (Environment, WorldModel, Reward Model, Dataset, almacén de episodios) y sus clientes `DEALER`. Fakes en memoria y como servidores ZeroMQ. Registro de ambientes. Incluyó `EpisodeManager`/`EpisodeStore` (adelantados) y las suites ENV/WM/RM/DSET/STORE/EP.
+3. ✅ **Gateway Core: ciclo de episodios.** `Core.reset`, `Core.step` (enruta por ambiente, respeta la regla de episodio terminado, batchea `score` una vez, registra transiciones con `source="env"`) y `Core.get_episode`. Absorbió el `reset`/`step` que el plan tenía aparte. La suite CORE del Learner se reusa contra el Core real (incluye CORE-03, episodio terminado).
+4. **`simulate` sobre el WorldModel.** `encode` + `rollout` por secuencia, puntuar con el mismo Reward Model, marcar `source="world_model"`. Suite SIM.
+5. **Dataset supervisado.** `Core.sample_supervised(n, filters?)` desde el Dataset (`source="dataset"`, acciones en unidades reales), y el gancho para agregar episodios exitosos filtrados. Suite DSET a nivel de Core.
+6. **Fallas y robustez.** Timeouts, caída y reconexión de un Environment, reintentos, parada de seguridad; multi-ambiente en paralelo. Suites FAIL y el test `distributed`.
+7. **Integración extremo a extremo.** `vla-core` con configs de ejemplo y el Learner real conduciendo un Core real con fakes por los tres flujos. Suite E2E (marcada `slow`).
 
 ## Decisiones abiertas (de `Architecture.md`)
 

@@ -22,8 +22,15 @@ def _build_backend(config: dict[str, Any]) -> CoreInterface:
     tipo = config.get("type", "static")
     if tipo == "static":
         return StaticCoreBackend()
+    if tipo == "fake":
+        # Gateway Core real con todos los componentes fake en memoria. Los
+        # clientes DEALER a componentes reales se cablean en fases posteriores.
+        from vla_core.testing.fakes import make_fake_core
+
+        return make_fake_core(demo_chunk_size=config.get("demo_chunk_size", 1))
     raise ValueError(
-        f"Backend de Core desconocido: {tipo!r}. El gateway real se agrega en fases posteriores."
+        f"Backend de Core desconocido: {tipo!r}. El gateway con componentes reales "
+        "se agrega en fases posteriores."
     )
 
 

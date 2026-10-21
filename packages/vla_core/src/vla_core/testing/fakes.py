@@ -14,9 +14,11 @@ from __future__ import annotations
 import numpy as np
 
 from vla_common.types import Action, ActionChunk, Observation, StepResult
+from vla_core.core import Core
 from vla_core.dataset import Dataset
-from vla_core.environments import Environment, EnvSpec, handle_environment
-from vla_core.reward import RewardModel, ScoreItem, handle_reward_model
+from vla_core.environments import Environment, EnvironmentRegistry, EnvSpec, handle_environment
+from vla_core.episodes import EpisodeManager, InMemoryEpisodeStore
+from vla_core.reward import RewardModel, RewardScorer, ScoreItem, handle_reward_model
 from vla_core.rpc import RouterServer, make_handler
 from vla_core.world_model import LatentState, WorldModel, handle_world_model
 
@@ -143,3 +145,32 @@ def serve_world_model(model: WorldModel, address: str = "tcp://127.0.0.1:0") -> 
 
 def serve_reward_model(model: RewardModel, address: str = "tcp://127.0.0.1:0") -> RouterServer:
     return RouterServer(make_handler(model, handle_reward_model), address)
+
+
+# -- Ensamblaje de un Core de prueba ----------------------------------------
+
+
+class FakeEnvironmentRegistry(EnvironmentRegistry):
+    """Registro que crea un ``FakeEnvironment`` al vuelo para cualquier ``env_id``.
+
+    Imita el auto-registro del ``FakeCoreClient`` del Learner, para poder correr
+    la misma suite CORE (que usa ids arbitrarios como ``"e0"`` o ``"a"``) contra
+    el Core real sin configurar los ambientes de antemano.
+    """
+
+    def get(self, env_id: str) -> Environment:
+        if env_id not in self._envs:
+            self._envs[env_id] = FakeEnvironment()
+        return self._envs[env_id]
+
+
+def make_fake_core(demo_chunk_size: int = 1) -> Core:
+    """Arma un ``Core`` con todos los componentes fake en memoria."""
+    return Core(
+        environments=FakeEnvironmentRegistry(),
+        episodes=EpisodeManager(),
+        store=InMemoryEpisodeStore(),
+        scorer=RewardScorer(FakeRewardModel()),
+        world_model=FakeWorldModel(),
+        dataset=FakeDataset(demo_chunk_size=demo_chunk_size),
+    )
