@@ -3,9 +3,16 @@
 Definido en ``docs/core/Core Design.md`` y ``docs/Architecture.md``. El
 WorldModel predice cómo cambian las observaciones ante secuencias de acciones.
 ``encode`` lleva una observación real a estado latente y ``rollout`` simula
-varias secuencias desde ahí, devolviendo **observaciones ya decodificadas** (una
-por chunk de cada secuencia). Así Core arma las transiciones imaginadas sin tocar
-el espacio latente: sigue siendo *model-free*.
+varias secuencias desde ahí.
+
+**Decisión (desvío del diseño original):** ``rollout`` devuelve ``StepResult`` por
+paso (no solo ``Observation``), con ``reward=None``. El motivo es que la
+terminación (``terminated``/``truncated``) es parte de la dinámica que el
+WorldModel conoce; Core, que es *model-free*, no podría calcularla a partir de
+una observación suelta. La recompensa sí la agrega Core con el Reward Model. Así
+``simulate`` produce ``StepResult`` válidos y coherentes con los del ambiente
+real, y el camino RL-sobre-world-model del Learner recibe los mismos datos que
+con el ``ToyWorldModel`` de prueba.
 """
 
 from __future__ import annotations
@@ -17,7 +24,7 @@ from typing import Any
 import numpy as np
 
 from vla_common import Array, wire
-from vla_common.types import ActionChunk, Observation
+from vla_common.types import ActionChunk, Observation, StepResult
 from vla_core.rpc import RpcChannel
 
 
@@ -43,8 +50,10 @@ class WorldModel(ABC):
     @abstractmethod
     def rollout(
         self, latent: LatentState, action_sequences: list[list[ActionChunk]]
-    ) -> list[list[Observation]]:
-        """Observaciones predichas: una lista por secuencia, una por chunk."""
+    ) -> list[list[StepResult]]:
+        """Pasos predichos: una lista por secuencia, un ``StepResult`` por chunk,
+        con ``reward=None`` (la recompensa la agrega Core). Una secuencia puede
+        cortarse antes si el paso predicho termina el episodio."""
 
 
 # -- Protocolo ZeroMQ del WorldModel ----------------------------------------
@@ -59,8 +68,8 @@ def handle_world_model(request: dict[str, Any], model: WorldModel) -> dict[str, 
         secuencias = [
             [wire.action_chunk_from_wire(c) for c in seq] for seq in request["action_sequences"]
         ]
-        predichas = model.rollout(latent_from_wire(request["latent"]), secuencias)
-        return {"observations": [[wire.observation_to_wire(o) for o in seq] for seq in predichas]}
+        predichos = model.rollout(latent_from_wire(request["latent"]), secuencias)
+        return {"sequences": [[wire.step_result_to_wire(r) for r in seq] for seq in predichos]}
     raise ValueError(f"Llamada desconocida de WorldModel: {call!r}")
 
 
@@ -76,7 +85,7 @@ class WorldModelClient(WorldModel):
 
     def rollout(
         self, latent: LatentState, action_sequences: list[list[ActionChunk]]
-    ) -> list[list[Observation]]:
+    ) -> list[list[StepResult]]:
         response = self._channel.call(
             {
                 "call": "rollout",
@@ -86,7 +95,7 @@ class WorldModelClient(WorldModel):
                 ],
             }
         )
-        return [[wire.observation_from_wire(o) for o in seq] for seq in response["observations"]]
+        return [[wire.step_result_from_wire(r) for r in seq] for seq in response["sequences"]]
 
     def close(self) -> None:
         self._channel.close()

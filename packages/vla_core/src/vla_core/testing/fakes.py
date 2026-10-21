@@ -82,22 +82,48 @@ class FakeEnvironment(Environment):
 
 
 class FakeWorldModel(WorldModel):
-    """Usa la misma dinámica reach. El latente guarda ``[pos, goal]``."""
+    """Simula la misma dinámica reach. El latente guarda ``[pos, goal]``.
+
+    ``rollout`` devuelve ``StepResult`` con ``reward=None`` (la recompensa la pone
+    Core), ``terminated`` al llegar a la meta y ``truncated`` al límite de pasos,
+    cortando la secuencia si el episodio termina. Misma semántica que el
+    ``ToyWorldModel`` del Learner.
+    """
 
     def encode(self, observation: Observation) -> LatentState:
         return LatentState(values=np.asarray(observation.proprio, dtype=np.float32).copy())
 
     def rollout(
         self, latent: LatentState, action_sequences: list[list[ActionChunk]]
-    ) -> list[list[Observation]]:
-        salida: list[list[Observation]] = []
+    ) -> list[list[StepResult]]:
+        salida: list[list[StepResult]] = []
         for secuencia in action_sequences:
             pos = latent.values[:2].astype(np.float32).copy()
             goal = latent.values[2:4].astype(np.float32).copy()
-            pasos: list[Observation] = []
+            pasos: list[StepResult] = []
+            steps = 0
             for chunk in secuencia:
-                pos = _apply(pos, chunk)
-                pasos.append(_observation(pos, goal))
+                reached = False
+                for action in chunk:
+                    pos = np.clip(
+                        pos + np.asarray(action.values, dtype=np.float32), -BOUND, BOUND
+                    ).astype(np.float32)
+                    if float(np.linalg.norm(pos - goal)) <= THRESHOLD:
+                        reached = True
+                        break
+                steps += 1
+                truncated = (not reached) and steps >= MAX_STEPS
+                pasos.append(
+                    StepResult(
+                        observation=_observation(pos, goal),
+                        reward=None,  # la agrega Core
+                        terminated=reached,
+                        truncated=truncated,
+                        info={"distance": float(np.linalg.norm(pos - goal))},
+                    )
+                )
+                if reached or truncated:
+                    break
             salida.append(pasos)
         return salida
 

@@ -5,9 +5,9 @@ contrato que ``FakeCoreClient`` y que el ``CoreClient`` consume), pero delgado:
 cada método es una secuencia corta de llamadas a colaboradores. No abre sockets,
 no simula física, no puntúa ni guarda transiciones a mano: lo pide.
 
-Estado de avance: ``reset``, ``step`` (con recompensa) y ``get_episode`` están
-implementados (Fase 3). ``simulate`` (Fase 5) y ``sample_supervised`` (Fase 6)
-todavía levantan ``NotImplementedError``.
+Estado de avance: ``reset``, ``step`` (con recompensa), ``get_episode`` (Fase 3)
+y ``simulate`` (Fase 4) están implementados. ``sample_supervised`` (Fase 5)
+todavía levanta ``NotImplementedError``.
 """
 
 from __future__ import annotations
@@ -110,12 +110,48 @@ class Core:
         action_sequences: list[list[ActionChunk]],
         with_reward: bool,
     ) -> list[list[StepResult]]:
-        raise NotImplementedError("Core.simulate se implementa en la Fase 5.")
+        start_obs = self._resolve_start(start)
+        latent = self._world_model.encode(start_obs)
+        # El WorldModel devuelve StepResult sin recompensa (puede cortar una
+        # secuencia si el paso predicho termina el episodio).
+        predichos = self._world_model.rollout(latent, action_sequences)
+        if not with_reward:
+            return predichos
+
+        # Una sola llamada a score para todas las transiciones imaginadas. La
+        # observación anterior del paso j es el inicio (j=0) o el paso j-1.
+        items: list[ScoreItem] = []
+        indices: list[tuple[int, int]] = []
+        for i, secuencia in enumerate(predichos):
+            previa = start_obs
+            for j, paso in enumerate(secuencia):
+                items.append(
+                    ScoreItem(
+                        instruction=previa.instruction,
+                        observation=previa,
+                        action=action_sequences[i][j],
+                        next_observation=paso.observation,
+                    )
+                )
+                indices.append((i, j))
+                previa = paso.observation
+
+        recompensas = self._scorer.score(items)
+        salida = [list(secuencia) for secuencia in predichos]
+        for (i, j), recompensa in zip(indices, recompensas, strict=True):
+            salida[i][j] = dataclasses.replace(salida[i][j], reward=recompensa)
+        return salida
+
+    def _resolve_start(self, start: Observation | tuple[str, int]) -> Observation:
+        if isinstance(start, Observation):
+            return start
+        episode_id, step = start
+        return self._store.get(episode_id)[step].observation
 
     def sample_supervised(
         self, n: int, filters: dict | None = None
     ) -> list[tuple[Observation, ActionChunk]]:
-        raise NotImplementedError("Core.sample_supervised se implementa en la Fase 6.")
+        raise NotImplementedError("Core.sample_supervised se implementa en la Fase 5.")
 
     def get_episode(self, episode_id: str) -> list[Transition]:
         return self._store.get(episode_id)

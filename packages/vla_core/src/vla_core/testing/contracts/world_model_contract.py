@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from vla_common.types import ActionChunk, Observation
+from vla_common.types import ActionChunk, Observation, StepResult
 from vla_core.world_model import LatentState, WorldModel
 
 
@@ -37,8 +37,12 @@ class WorldModelContract:
     ) -> None:
         latent = world_model.encode(sample_observation)
         secuencias = [[sample_chunk, sample_chunk], [sample_chunk]]
-        predichas = world_model.rollout(latent, secuencias)
-        assert [len(seq) for seq in predichas] == [2, 1]
-        for seq in predichas:
-            for obs in seq:
-                assert isinstance(obs, Observation)
+        predichos = world_model.rollout(latent, secuencias)
+        # Una lista por secuencia; cada paso es un StepResult sin recompensa
+        # (la agrega Core). Una secuencia puede cortarse antes si termina.
+        assert len(predichos) == 2
+        assert len(predichos[1]) == 1
+        for seq in predichos:
+            for paso in seq:
+                assert isinstance(paso, StepResult)
+                assert paso.reward is None

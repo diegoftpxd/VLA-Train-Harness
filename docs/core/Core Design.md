@@ -146,10 +146,10 @@ class WorldModel(ABC):
     def encode(self, observation: Observation) -> LatentState: ...
     @abstractmethod
     def rollout(self, latent: LatentState,
-                action_sequences: list[list[ActionChunk]]) -> list[list[Observation]]: ...
+                action_sequences: list[list[ActionChunk]]) -> list[list[StepResult]]: ...
 ```
 
-`rollout` devuelve **observaciones ya decodificadas** (una lista por secuencia, una observación por chunk). Con eso Core arma las transiciones imaginadas y las puntúa sin tocar el espacio latente: Core sigue siendo *model-free*. (Esto resuelve la decisión abierta de `Architecture.md` sobre dónde se decodifica: lo hace el WorldModel dentro de `rollout`.) `WorldModelClient` habla por `RpcChannel`; `FakeWorldModel` envuelve algo como `ToyWorldModel`.
+`rollout` devuelve un `StepResult` **por chunk de cada secuencia**, con la observación ya decodificada y `reward=None` (la recompensa la agrega Core). Una secuencia se corta antes si el paso predicho termina el episodio. **Decisión (Fase 4, desvío del borrador que devolvía solo `Observation`):** la terminación (`terminated`/`truncated`) es parte de la dinámica que el WorldModel conoce y Core, *model-free*, no podría inferirla de una observación suelta; devolver `StepResult` mantiene esa información y hace que `simulate` produzca pasos coherentes con el ambiente real (mismos datos que el `ToyWorldModel` del Learner). Core sigue sin tocar el espacio latente. `WorldModelClient` habla por `RpcChannel`; `FakeWorldModel` reproduce la dinámica reach.
 
 ### Reward: `RewardModel`, `RewardModelClient`, `RewardScorer`
 
@@ -241,7 +241,7 @@ class DownstreamUnavailable(CoreError): ...
 
 **`reset`:** por cada `env_id`, `Environment.reset` → observación; `EpisodeManager.open` crea el `episode_id` y guarda la observación inicial; devuelve `(episode_id, observación)`.
 
-**`simulate`:** resuelve `start` (una `Observation`, o `(episode_id, step)` buscado en `EpisodeStore`); `WorldModel.encode` → latente; `WorldModel.rollout` → observaciones predichas por secuencia; arma los `ScoreItem` de todas las secuencias y puntúa en una sola llamada; devuelve un `StepResult` por paso, con `source="world_model"`; registra las transiciones imaginadas (configurable).
+**`simulate`:** resuelve `start` (una `Observation`, o `(episode_id, step)` buscado en `EpisodeStore`); `WorldModel.encode` → latente; `WorldModel.rollout` → `StepResult` por chunk de cada secuencia (con `terminated`/`truncated`, `reward=None`); arma los `ScoreItem` de todas las secuencias (la observación previa del paso j es el inicio o el paso j-1) y puntúa en **una sola** llamada; devuelve los `StepResult` con la recompensa adjunta. Las transiciones imaginadas **no** se guardan en el almacén por ahora (igual que el `FakeCoreClient` de referencia); el Learner las marca con `source="world_model"` al armar su batch.
 
 **`sample_supervised` / `get_episode`:** delegación directa en `Dataset` y `EpisodeStore`.
 
