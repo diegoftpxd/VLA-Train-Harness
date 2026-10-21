@@ -1,0 +1,145 @@
+"""Fakes en memoria de los componentes que Core consume, y sus servidores ZeroMQ.
+
+Definidos en ``docs/core/Test Core.md``. Son livianos, deterministas y en CPU:
+implementan las mismas ABCs que un componente real, para construir y probar Core
+sin simuladores, world models ni reward models de verdad. Cada fake trae además
+un servidor ``RouterServer`` para probar su cliente ``DEALER`` por la red.
+
+El ambiente es un "reach" en 2D (como ``ToyReachEnv`` del Learner, pero propio de
+``vla_core`` para no depender del Learner): un punto debe llegar a una meta.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+from vla_common.types import Action, ActionChunk, Observation, StepResult
+from vla_core.dataset import Dataset
+from vla_core.environments import Environment, EnvSpec, handle_environment
+from vla_core.reward import RewardModel, ScoreItem, handle_reward_model
+from vla_core.rpc import RouterServer, make_handler
+from vla_core.world_model import LatentState, WorldModel, handle_world_model
+
+BOUND = 1.0
+THRESHOLD = 0.1
+MAX_STEPS = 20
+
+
+def _observation(pos: np.ndarray, goal: np.ndarray) -> Observation:
+    return Observation(
+        images={"front": np.zeros((3, 8, 8), dtype=np.float32)},
+        proprio=np.concatenate([pos, goal]).astype(np.float32),
+        instruction="reach the goal",
+    )
+
+
+def _apply(pos: np.ndarray, chunk: ActionChunk) -> np.ndarray:
+    for action in chunk:
+        pos = pos + np.asarray(action.values, dtype=np.float32)
+    return np.clip(pos, -BOUND, BOUND).astype(np.float32)
+
+
+class FakeEnvironment(Environment):
+    """Ambiente reach 2D, determinista por semilla. ``step`` no calcula recompensa."""
+
+    def __init__(self) -> None:
+        self._pos = np.zeros(2, dtype=np.float32)
+        self._goal = np.zeros(2, dtype=np.float32)
+        self._steps = 0
+
+    def reset(self, task: str | None, seed: int | None) -> Observation:
+        rng = np.random.default_rng(seed)
+        self._pos = rng.uniform(-BOUND, BOUND, size=2).astype(np.float32)
+        self._goal = rng.uniform(-BOUND, BOUND, size=2).astype(np.float32)
+        self._steps = 0
+        return _observation(self._pos, self._goal)
+
+    def step(self, actions: ActionChunk) -> StepResult:
+        self._pos = _apply(self._pos, actions)
+        self._steps += 1
+        distancia = float(np.linalg.norm(self._pos - self._goal))
+        terminated = distancia < THRESHOLD
+        truncated = self._steps >= MAX_STEPS and not terminated
+        return StepResult(
+            observation=_observation(self._pos, self._goal),
+            reward=None,  # la agrega Core
+            terminated=terminated,
+            truncated=truncated,
+            info={"distance": distancia},
+        )
+
+    def close(self) -> None:
+        pass
+
+    def emergency_stop(self) -> None:
+        pass
+
+    @property
+    def spec(self) -> EnvSpec:
+        return EnvSpec(action_dim=2, cameras=["front"])
+
+
+class FakeWorldModel(WorldModel):
+    """Usa la misma dinámica reach. El latente guarda ``[pos, goal]``."""
+
+    def encode(self, observation: Observation) -> LatentState:
+        return LatentState(values=np.asarray(observation.proprio, dtype=np.float32).copy())
+
+    def rollout(
+        self, latent: LatentState, action_sequences: list[list[ActionChunk]]
+    ) -> list[list[Observation]]:
+        salida: list[list[Observation]] = []
+        for secuencia in action_sequences:
+            pos = latent.values[:2].astype(np.float32).copy()
+            goal = latent.values[2:4].astype(np.float32).copy()
+            pasos: list[Observation] = []
+            for chunk in secuencia:
+                pos = _apply(pos, chunk)
+                pasos.append(_observation(pos, goal))
+            salida.append(pasos)
+        return salida
+
+
+class FakeRewardModel(RewardModel):
+    """Recompensa = distancia negativa del punto a la meta en la observación siguiente."""
+
+    def score(self, items: list[ScoreItem]) -> list[float]:
+        recompensas: list[float] = []
+        for item in items:
+            proprio = np.asarray(item.next_observation.proprio, dtype=np.float32)
+            distancia = float(np.linalg.norm(proprio[:2] - proprio[2:4]))
+            recompensas.append(-distancia)
+        return recompensas
+
+
+class FakeDataset(Dataset):
+    """Pares supervisados deterministas con un controlador perfecto."""
+
+    def __init__(self, seed: int = 0, demo_chunk_size: int = 1) -> None:
+        self._rng = np.random.default_rng(seed)
+        self._demo_chunk_size = demo_chunk_size
+
+    def sample(self, n: int, filters: dict | None = None) -> list[tuple[Observation, ActionChunk]]:
+        pares: list[tuple[Observation, ActionChunk]] = []
+        for _ in range(n):
+            pos = self._rng.uniform(-BOUND, BOUND, size=2).astype(np.float32)
+            goal = self._rng.uniform(-BOUND, BOUND, size=2).astype(np.float32)
+            delta = ((goal - pos) / self._demo_chunk_size).astype(np.float32)
+            chunk: ActionChunk = [Action(values=delta.copy()) for _ in range(self._demo_chunk_size)]
+            pares.append((_observation(pos, goal), chunk))
+        return pares
+
+
+# -- Servidores ZeroMQ de prueba (para ejercitar los clientes DEALER) -------
+
+
+def serve_environment(env: Environment, address: str = "tcp://127.0.0.1:0") -> RouterServer:
+    return RouterServer(make_handler(env, handle_environment), address)
+
+
+def serve_world_model(model: WorldModel, address: str = "tcp://127.0.0.1:0") -> RouterServer:
+    return RouterServer(make_handler(model, handle_world_model), address)
+
+
+def serve_reward_model(model: RewardModel, address: str = "tcp://127.0.0.1:0") -> RouterServer:
+    return RouterServer(make_handler(model, handle_reward_model), address)
