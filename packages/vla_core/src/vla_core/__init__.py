@@ -10,6 +10,7 @@ dominio; el gateway ``Core`` y sus colaboradores llegan en fases posteriores.
 
 from vla_core.errors import (
     CoreError,
+    DatasetNotAppendable,
     DownstreamTimeout,
     DownstreamUnavailable,
     EpisodeAlreadyDone,
@@ -20,6 +21,7 @@ from vla_core.server import CoreServer
 __all__ = [
     "CoreError",
     "CoreServer",
+    "DatasetNotAppendable",
     "DownstreamTimeout",
     "DownstreamUnavailable",
     "EpisodeAlreadyDone",

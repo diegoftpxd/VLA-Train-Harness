@@ -15,7 +15,7 @@ import numpy as np
 
 from vla_common.types import Action, ActionChunk, Observation, StepResult
 from vla_core.core import Core
-from vla_core.dataset import Dataset
+from vla_core.dataset import AppendableDataset
 from vla_core.environments import Environment, EnvironmentRegistry, EnvSpec, handle_environment
 from vla_core.episodes import EpisodeManager, InMemoryEpisodeStore
 from vla_core.reward import RewardModel, RewardScorer, ScoreItem, handle_reward_model
@@ -27,11 +27,13 @@ THRESHOLD = 0.1
 MAX_STEPS = 20
 
 
-def _observation(pos: np.ndarray, goal: np.ndarray) -> Observation:
+def _observation(
+    pos: np.ndarray, goal: np.ndarray, instruction: str = "reach the goal"
+) -> Observation:
     return Observation(
         images={"front": np.zeros((3, 8, 8), dtype=np.float32)},
         proprio=np.concatenate([pos, goal]).astype(np.float32),
-        instruction="reach the goal",
+        instruction=instruction,
     )
 
 
@@ -140,22 +142,39 @@ class FakeRewardModel(RewardModel):
         return recompensas
 
 
-class FakeDataset(Dataset):
-    """Pares supervisados deterministas con un controlador perfecto."""
+class FakeDataset(AppendableDataset):
+    """Pares supervisados deterministas con un controlador perfecto.
+
+    Respeta el filtro ``task`` (la instrucción de los pares generados) e ignora
+    los criterios que no modela (p. ej. ``embodiment``, que la observación reach
+    no tiene). Admite reinyección (``add``): los pares agregados por el gancho de
+    episodios exitosos se sirven antes que los generados al vuelo.
+    """
 
     def __init__(self, seed: int = 0, demo_chunk_size: int = 1) -> None:
         self._rng = np.random.default_rng(seed)
         self._demo_chunk_size = demo_chunk_size
+        self._ingested: list[tuple[Observation, ActionChunk]] = []
 
     def sample(self, n: int, filters: dict | None = None) -> list[tuple[Observation, ActionChunk]]:
-        pares: list[tuple[Observation, ActionChunk]] = []
-        for _ in range(n):
+        task = (filters or {}).get("task")
+        # Primero los pares reinyectados que cumplen el filtro; luego se rellena
+        # generando al vuelo hasta llegar a n.
+        pares: list[tuple[Observation, ActionChunk]] = [
+            par for par in self._ingested if task is None or par[0].instruction == task
+        ][:n]
+        instruction = task if task is not None else "reach the goal"
+        while len(pares) < n:
             pos = self._rng.uniform(-BOUND, BOUND, size=2).astype(np.float32)
             goal = self._rng.uniform(-BOUND, BOUND, size=2).astype(np.float32)
             delta = ((goal - pos) / self._demo_chunk_size).astype(np.float32)
             chunk: ActionChunk = [Action(values=delta.copy()) for _ in range(self._demo_chunk_size)]
-            pares.append((_observation(pos, goal), chunk))
+            pares.append((_observation(pos, goal, instruction), chunk))
         return pares
+
+    def add(self, pairs: list[tuple[Observation, ActionChunk]]) -> int:
+        self._ingested.extend(pairs)
+        return len(pairs)
 
 
 # -- Servidores ZeroMQ de prueba (para ejercitar los clientes DEALER) -------

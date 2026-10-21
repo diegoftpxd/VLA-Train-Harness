@@ -13,7 +13,7 @@ Principios: todo corre en **CPU** con *fakes* livianos y deterministas; nada des
 | **ENV** | Contrato de `Environment` (`reset`/`step`/`close`, specs) | 2 | `fast` |
 | **WM** | Contrato de `WorldModel` (`encode`/`rollout`) | 2 | `fast` |
 | **RM** | Contrato de `RewardModel` (`score` por batch) | 2 | `fast` |
-| **DSET** | Contrato de `Dataset` (`sample`, unidades reales, filtros) | 6 | `fast` |
+| **DSET** | Contrato de `Dataset` (`sample`, unidades reales, filtros) y de `AppendableDataset` (`add`); `Core.sample_supervised` y el gancho `ingest_episode` | 5 | `fast` |
 | **STORE** | Contrato de `EpisodeStore` (`append`/`get`) | 3 | `fast` |
 | **EP** | `EpisodeManager`: paso, observación anterior, regla de episodio terminado | 3 | `fast` |
 | **STEP/RESET** | `Core.step`/`reset`: enrutado, recompensa batcheada, registro de transiciones | 4 | `fast` |
@@ -52,13 +52,14 @@ Cada ABC trae su suite; su *fake* y cualquier implementación real deben pasarla
 - **RM**: `score` acepta un batch de `ScoreItem` y devuelve una recompensa por item, en el mismo orden; acepta batch vacío.
 - **STORE**: `append` luego `get(episode_id)` devuelve las transiciones en orden; `get` de un id desconocido es error.
 - **EP**: `open` crea un `episode_id` único; `advance` incrementa el paso y actualiza la observación anterior; `is_done` refleja `terminated`/`truncated`.
-- **DSET**: `sample(n)` devuelve `n` pares; las acciones están en unidades reales; los filtros se respetan.
+- **DSET**: `sample(n)` devuelve `n` pares; las acciones están en unidades reales (ndarray `float32`, sin normalizar); los filtros se respetan (`sample(n, {"task": t})` ⇒ todos los pares tienen esa instrucción). Para `AppendableDataset`: `add(pairs)` devuelve cuántos agregó y lo reinyectado se vuelve a muestrear.
 
 ## Flujos de Core (Fases 4–5)
 
 - **RESET**: abre un episodio por ambiente y guarda la observación inicial.
 - **STEP**: enruta cada chunk a su Environment; con `with_reward=True` hace **una sola** llamada a `score` para todo el batch; registra una `Transition` (`source="env"`) por ambiente; respeta la regla de episodio terminado.
 - **SIM**: resuelve el punto de partida (observación o `(episode_id, step)`), corre el WorldModel, puntúa con el mismo Reward Model y marca `source="world_model"`.
+- **DSET (nivel Core)**: `sample_supervised(n, filters?)` delega en el Dataset y conserva los filtros (también por la red, `CoreClient`↔`CoreServer`); el gancho `ingest_episode` reinyecta un episodio exitoso (`terminated`) y no uno truncado, y levanta `DatasetNotAppendable` sobre un Dataset de solo-lectura.
 
 ## Fallas e integración (Fases 7–8)
 

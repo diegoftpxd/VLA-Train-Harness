@@ -5,9 +5,9 @@ contrato que ``FakeCoreClient`` y que el ``CoreClient`` consume), pero delgado:
 cada método es una secuencia corta de llamadas a colaboradores. No abre sockets,
 no simula física, no puntúa ni guarda transiciones a mano: lo pide.
 
-Estado de avance: ``reset``, ``step`` (con recompensa), ``get_episode`` (Fase 3)
-y ``simulate`` (Fase 4) están implementados. ``sample_supervised`` (Fase 5)
-todavía levanta ``NotImplementedError``.
+Estado de avance: ``reset``, ``step`` (con recompensa), ``get_episode`` (Fase 3),
+``simulate`` (Fase 4) y ``sample_supervised`` + el gancho ``ingest_episode``
+(Fase 5) están implementados.
 """
 
 from __future__ import annotations
@@ -15,10 +15,10 @@ from __future__ import annotations
 import dataclasses
 
 from vla_common.types import ActionChunk, Observation, StepResult, Transition
-from vla_core.dataset import Dataset
+from vla_core.dataset import AppendableDataset, Dataset
 from vla_core.environments import EnvironmentRegistry
 from vla_core.episodes import EpisodeManager, EpisodeStore
-from vla_core.errors import EpisodeAlreadyDone
+from vla_core.errors import DatasetNotAppendable, EpisodeAlreadyDone
 from vla_core.reward import RewardScorer, ScoreItem
 from vla_core.world_model import WorldModel
 
@@ -151,7 +151,36 @@ class Core:
     def sample_supervised(
         self, n: int, filters: dict | None = None
     ) -> list[tuple[Observation, ActionChunk]]:
-        raise NotImplementedError("Core.sample_supervised se implementa en la Fase 5.")
+        # Delegación directa en el Dataset (ver flujo "Supervisado" en
+        # Architecture.md). Las acciones salen en unidades reales; el Learner las
+        # marca con source="dataset" al armar su batch.
+        return self._dataset.sample(n, filters)
+
+    def ingest_episode(self, episode_id: str) -> int:
+        """Gancho de episodios exitosos: reinyecta un episodio en el Dataset.
+
+        Toma las transiciones que Core registró para ``episode_id``, aplica el
+        filtro de éxito (el episodio terminó por ``terminated``, es decir alcanzó
+        la meta —no por ``truncated``—) y agrega sus pares ``(observación,
+        acción)`` al Dataset como demos supervisadas. Devuelve cuántos pares se
+        agregaron (``0`` si el episodio no fue exitoso).
+
+        El Dataset debe ser ``AppendableDataset`` (``DatasetNotAppendable`` si no).
+        Las transiciones imaginadas no llegan acá: solo lo que Core guardó en el
+        almacén, que es siempre real (``source="env"``).
+        """
+        if not isinstance(self._dataset, AppendableDataset):
+            raise DatasetNotAppendable("el Dataset configurado no admite reinyectar episodios")
+        transiciones = self._store.get(episode_id)
+        if not self._episode_succeeded(transiciones):
+            return 0
+        pares = [(t.observation, t.action) for t in transiciones]
+        return self._dataset.add(pares)
+
+    @staticmethod
+    def _episode_succeeded(transitions: list[Transition]) -> bool:
+        """Éxito = el episodio terminó alcanzando la meta (``terminated``)."""
+        return bool(transitions) and transitions[-1].result.terminated
 
     def get_episode(self, episode_id: str) -> list[Transition]:
         return self._store.get(episode_id)

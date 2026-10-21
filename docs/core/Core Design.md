@@ -47,7 +47,7 @@ class CoreInterface(Protocol):
 | Reward | `RewardScorer` | Armar el batch de puntuación y adjuntar recompensas | `vla_core` |
 | Episodios | `EpisodeManager` | Llevar el estado en vuelo de cada episodio | `vla_core` |
 | Episodios | `EpisodeStore` (ABC) + `InMemoryEpisodeStore` | Guardar y recuperar transiciones (`append`/`get`) | `vla_core` |
-| Datos | `Dataset` (ABC) + `FakeDataset` | Servir pares supervisados (`sample`) | `vla_core` |
+| Datos | `Dataset` / `AppendableDataset` (ABC) + `FakeDataset` | Servir pares supervisados (`sample`) y reinyectar demos (`add`) | `vla_core` |
 | Red | `RpcChannel` | Request/response confiable (DEALER + timeout + reintentos) a un proceso | `vla_core` |
 | Errores | `CoreError` y subclases | Errores de dominio que el servidor traduce a `{ok: False, error}` | `vla_core` |
 
@@ -96,7 +96,8 @@ Responsabilidad de cada método (el detalle de los flujos está más abajo):
 - `reset`: por cada `env_id`, pide el cliente al registro, llama `reset`, abre un episodio en `EpisodeManager` y devuelve `(episode_id, observación)`.
 - `step`: enruta cada chunk a su Environment, respeta las reglas de episodio, puntúa el batch con `RewardScorer` si `with_reward`, registra cada `Transition` y devuelve los `StepResult`.
 - `simulate`: resuelve el punto de partida, usa el `WorldModel` para imaginar las secuencias, las puntúa con el mismo `RewardScorer` y devuelve un `StepResult` por paso de cada secuencia.
-- `sample_supervised`: delega en `Dataset.sample`.
+- `sample_supervised`: delega en `Dataset.sample(n, filters)` (acciones en unidades reales; el Learner las marca con `source="dataset"`).
+- `ingest_episode` (gancho, fuera del protocolo): reinyecta un episodio exitoso del almacén en el Dataset (ver "Datos").
 - `get_episode`: delega en `EpisodeStore.get`.
 - `close`: cierra ambientes y canales.
 
@@ -196,15 +197,21 @@ class EpisodeStore(ABC):
 
 `EpisodeManager` tiene la observación anterior (la necesita el Reward Model) y hace cumplir que un `step` sobre un episodio `terminated`/`truncated` sea un error hasta el próximo `reset` (`EpisodeAlreadyDone`). `InMemoryEpisodeStore` guarda en memoria; una variante en disco se agrega sin cambiar la interfaz. El `source` de cada transición lo fija quien la crea (`"env"` en `step`, `"world_model"` en `simulate`).
 
-### Datos: `Dataset`
+### Datos: `Dataset`, `AppendableDataset`
 
 ```python
 class Dataset(ABC):
     @abstractmethod
     def sample(self, n: int, filters: dict | None = None) -> list[tuple[Observation, ActionChunk]]: ...
+
+class AppendableDataset(Dataset):
+    @abstractmethod
+    def add(self, pairs: list[tuple[Observation, ActionChunk]]) -> int: ...   # devuelve cuántos agregó
 ```
 
-Vive dentro de Core. Entrega acciones en unidades reales, sin normalizar. `FakeDataset` genera pares deterministas (como hoy hace `FakeCoreClient.sample_supervised`). El gancho para reinyectar episodios exitosos filtrados se agrega sobre esta interfaz.
+Vive dentro de Core. Entrega acciones en unidades reales, sin normalizar. `filters` es un diccionario opcional de criterios (`task`, `embodiment`, …); cada implementación respeta los que entiende e ignora el resto. `FakeDataset` genera pares deterministas (como hoy hace `FakeCoreClient.sample_supervised`) y respeta el filtro `task` (la instrucción de los pares).
+
+**Gancho de episodios exitosos (Fase 5).** `AppendableDataset` separa la capacidad de **reinyectar** demos de la de solo leerlas: un corpus real de solo-lectura implementa solo `Dataset`; un dataset que acepta demos nuevas implementa `AppendableDataset`. Sobre esa capacidad, `Core.ingest_episode(episode_id)` toma las transiciones que Core registró para ese episodio, aplica el filtro de éxito (el episodio terminó por `terminated`, es decir alcanzó la meta, no por `truncated`) y agrega sus pares `(observación, acción)` al Dataset; devuelve cuántos agregó (`0` si no fue exitoso) y levanta `DatasetNotAppendable` si el Dataset no es agregable. Solo reinyecta lo real del almacén (`source="env"`), nunca transiciones imaginadas. El gancho vive en Core (es Core quien registró los episodios), apoyado en `AppendableDataset`; no es parte del `CoreInterface` que el Learner invoca por el protocolo.
 
 ### Red: `RpcChannel`
 
@@ -225,6 +232,7 @@ class UnknownEnvironment(CoreError): ...
 class EpisodeAlreadyDone(CoreError): ...
 class DownstreamTimeout(CoreError): ...
 class DownstreamUnavailable(CoreError): ...
+class DatasetNotAppendable(CoreError): ...   # ingest_episode sobre un Dataset de solo-lectura
 ```
 
 `dispatch_request` captura `CoreError` (y cualquier excepción) y la devuelve como `{ok: False, error}`; el `CoreClient` la vuelve a levantar como `RuntimeError` en el Learner. Nada se cae por un pedido mal formado.

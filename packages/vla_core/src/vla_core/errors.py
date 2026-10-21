@@ -28,3 +28,7 @@ class DownstreamTimeout(CoreError):
 
 class DownstreamUnavailable(CoreError):
     """Un componente se cayó o no está disponible tras agotar los reintentos."""
+
+
+class DatasetNotAppendable(CoreError):
+    """Se intentó reinyectar episodios en un ``Dataset`` que no es ``AppendableDataset``."""
