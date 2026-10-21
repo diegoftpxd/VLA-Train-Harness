@@ -36,7 +36,7 @@ def _servir(nombre: str) -> Iterator[CoreServer]:
         server.stop()
 
 
-@pytest.mark.parametrize("nombre", ["fake.yaml", "echo.yaml"])
+@pytest.mark.parametrize("nombre", ["fake.yaml", "echo.yaml", "local.yaml"])
 def test_config_se_construye_y_responde(nombre: str) -> None:
     with _servir(nombre) as server:
         client = CoreClient(server.address, timeout_s=5.0)

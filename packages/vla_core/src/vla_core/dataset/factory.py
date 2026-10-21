@@ -10,9 +10,9 @@ Los adaptadores se importan **perezosamente** dentro de su rama (igual que
 dependencias pesadas no se importe salvo que la config lo pida y ``vla_core``
 base siga sin ``torch`` ni ``tensorflow``.
 
-En esta fase solo está disponible el adaptador ``fake`` (en memoria). Los
-adaptadores ``local``, ``lerobot`` y ``openx`` se suman en fases posteriores
-(ver el plan de acción en ``Dataset Design.md``).
+Disponibles: ``fake`` (en memoria) y ``local`` (layout on-disk, sin
+dependencias). Los adaptadores ``lerobot`` y ``openx`` se suman en fases
+posteriores (ver el plan de acción en ``Dataset Design.md``).
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from vla_core.dataset.base import Dataset
 
 # Tipos conocidos que aún no están implementados; se enumeran para dar un error
 # claro (y no un "desconocido") mientras llegan en fases posteriores.
-_PENDIENTES = {"local", "lerobot", "openx"}
+_PENDIENTES = {"lerobot", "openx"}
 
 
 def build_dataset(config: dict[str, Any]) -> Dataset:
@@ -37,6 +37,16 @@ def build_dataset(config: dict[str, Any]) -> Dataset:
         return FakeDataset(
             seed=config.get("seed", 0),
             demo_chunk_size=config.get("demo_chunk_size", 1),
+        )
+
+    if tipo == "local":
+        from vla_core.dataset.local import LocalDataset
+
+        return LocalDataset(
+            path=config["path"],
+            cameras=config.get("cameras"),
+            demo_chunk_size=config.get("demo_chunk_size", 1),
+            seed=config.get("seed", 0),
         )
 
     if tipo in _PENDIENTES:

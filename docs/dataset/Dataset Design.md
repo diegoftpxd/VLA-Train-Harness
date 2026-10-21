@@ -195,13 +195,14 @@ dataset:
 Cada fase cierra con `uv run pytest -m fast`, `ruff` y `pyright` en verde, y un commit en la
 rama `Dataset`.
 
-1. **Refactor a paquete + factory.** Convertir `dataset.py` → `dataset/` (reexportando la
-   ABC), agregar `dataset/factory.py` con `build_dataset`, y enganchar `builder.py` para que
-   use la factory en el bloque `dataset`. Sin cambios de comportamiento: `type: fake` sigue
-   igual. Tests de regresión en `fast`.
-2. **`LocalDataset` + fixture + contrato.** Implementar `dataset/local.py` (sample, filtros,
-   mapeo, chunking), crear un fixture chico en el repo y una suite que corra
-   `DatasetContract` contra `LocalDataset` en `fast`. Config `configs/core/local.yaml`.
+1. ✅ **Refactor a paquete + factory.** `dataset.py` → `dataset/` (`base.py` con las ABCs,
+   reexportadas desde `__init__.py`) + `dataset/factory.py` con `build_dataset`. Sin cambios
+   de comportamiento: `type: fake` sigue igual. Suite `test_dataset_factory.py` (`fast`).
+2. ✅ **`LocalDataset` + fixture + contrato.** `dataset/local.py` (sample, filtros, mapeo de
+   cámaras, chunking), fixture chico en `tests/data/local_reach/` y `test_dataset_local.py`
+   corriendo `DatasetContract` en `fast`. `build_core` inyecta el `dataset` del YAML en el
+   Core fake (`make_fake_core(dataset=...)`); config `configs/core/local.yaml` validada por
+   `test_configs.py`.
 3. **`LeRobotDataset` (grupo opcional).** `uv add --optional lerobot ...`, implementar
    `dataset/lerobot.py` con el mapeo documentado, config `configs/core/lerobot.yaml`, y una
    suite marcada `heavy` (no se corre aquí). Documentar el mapeo de cámaras/proprio/acciones.

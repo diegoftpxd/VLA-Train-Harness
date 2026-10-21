@@ -18,7 +18,7 @@ import zmq
 
 from vla_common.types import Action, ActionChunk, Observation, StepResult
 from vla_core.core import Core
-from vla_core.dataset import AppendableDataset
+from vla_core.dataset import AppendableDataset, Dataset
 from vla_core.environments import Environment, EnvironmentRegistry, EnvSpec, handle_environment
 from vla_core.episodes import EpisodeManager, InMemoryEpisodeStore
 from vla_core.errors import DownstreamTimeout
@@ -307,13 +307,17 @@ class FakeEnvironmentRegistry(EnvironmentRegistry):
         return self._envs[env_id]
 
 
-def make_fake_core(demo_chunk_size: int = 1) -> Core:
-    """Arma un ``Core`` con todos los componentes fake en memoria."""
+def make_fake_core(demo_chunk_size: int = 1, dataset: Dataset | None = None) -> Core:
+    """Arma un ``Core`` con todos los componentes fake en memoria.
+
+    ``dataset`` permite inyectar otro ``Dataset`` (p. ej. un ``LocalDataset``
+    construido desde config); si es ``None`` se usa ``FakeDataset``.
+    """
     return Core(
         environments=FakeEnvironmentRegistry(),
         episodes=EpisodeManager(),
         store=InMemoryEpisodeStore(),
         scorer=RewardScorer(FakeRewardModel()),
         world_model=FakeWorldModel(),
-        dataset=FakeDataset(demo_chunk_size=demo_chunk_size),
+        dataset=dataset if dataset is not None else FakeDataset(demo_chunk_size=demo_chunk_size),
     )

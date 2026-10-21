@@ -1,0 +1,17 @@
+# Core con un Dataset `local`: demos supervisadas leídas desde un directorio
+# on-disk (formato de referencia, sin dependencias). Ver docs/dataset/Dataset
+# Design.md.
+#
+#   uv run vla-core --config configs/core/local.yaml
+#
+# El bloque `dataset` lo consume `build_dataset` (vla_core/dataset/factory.py)
+# y se inyecta en el Core (resto de componentes fake). `path` apunta a un
+# directorio de episodios; cada episodio tiene meta.json (instruction) y
+# data.npz (proprio, actions y una clave por cámara).
+server: { address: "tcp://127.0.0.1:5555" }
+backend: { type: fake }
+dataset:
+  type: local
+  path: packages/vla_core/tests/data/local_reach
+  cameras: { front: front } # nombre canónico -> clave en el npz
+  demo_chunk_size: 1

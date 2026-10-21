@@ -7,5 +7,6 @@ el adaptador concreto desde configuración. Ver ``docs/dataset/Dataset Design.md
 
 from vla_core.dataset.base import AppendableDataset, Dataset
 from vla_core.dataset.factory import build_dataset
+from vla_core.dataset.local import LocalDataset
 
-__all__ = ["AppendableDataset", "Dataset", "build_dataset"]
+__all__ = ["AppendableDataset", "Dataset", "LocalDataset", "build_dataset"]

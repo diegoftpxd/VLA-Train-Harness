@@ -45,7 +45,7 @@ def test_fake_es_appendable() -> None:
 
 def test_tipo_pendiente_error_claro() -> None:
     # Adaptadores anunciados pero aún no implementados dan NotImplementedError.
-    for tipo in ("local", "lerobot", "openx"):
+    for tipo in ("lerobot", "openx"):
         with pytest.raises(NotImplementedError):
             build_dataset({"type": tipo})
 
