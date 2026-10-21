@@ -305,6 +305,16 @@ La `TokenActionHead` de referencia discretiza cada dimensión de forma independi
 
 **Congelar y LoRA.** Se decide al construir la política: el factory congela el backbone o le aplica LoRA, y `trainable_parameters()` devuelve solo lo que se entrena. Ni el algoritmo ni el optimizador saben que hay partes congeladas.
 
+### Adaptador `OpenVLAPolicy`
+
+Primer adaptador de un modelo real (implementado a pedido; antes estaba fuera de alcance). OpenVLA-7B es un VLA autoregresivo (Llama-2 + SigLIP/DINOv2) que predice **una** acción de 7 dimensiones por paso. No se separa en backbone + cabeza: implementa `VLAPolicy` directo en `policy/adapters/openvla.py`.
+
+- **Capacidades:** `{LOG_PROB, ENTROPY}`. No tiene cabeza de valor, así que es compatible con **BC** y **GRPO**, no con PPO. `chunk_size = 1`, `action_dim = len(q01)` (7 en los datasets de origen).
+- **Normalización y tokens (dentro de la política).** Cada dimensión se normaliza a `[-1, 1]` con `q01`/`q99` del dataset elegido (`unnorm_key`) y una `mask` que indica qué dimensiones se normalizan (la pinza suele pasar sin tocar). La discretización replica a OpenVLA: `bins = linspace(-1, 1, 256)`; `token_id = vocab_size − digitize(a)`, que ocupa los últimos 256 ids del vocabulario de Llama.
+- **`act`.** Genera los 7 tokens con `generate` (greedy si `deterministic=True`, lo que satisface POL-04 sin tocar el estado aleatorio global), los desnormaliza a unidades reales y guarda los ids elegidos en `extras["action_token_ids"]`.
+- **`evaluate_actions` / `imitation_loss`.** Arman la secuencia `[prompt, tokens de acción]`, corren el modelo y toman los logits de las últimas posiciones (`logits[:, −n−1:−1]`): como los tokens de acción van al final, sus predicciones son las últimas `n`, **sin** depender de cuántos tokens de visión inserte el modelo. `evaluate_actions` reusa los ids de `extras` para no re-tokenizar (misma convención que `TokenActionHead`); `imitation_loss` es cross-entropy sobre esos tokens.
+- **Dependencias e integración.** `transformers`/`timm`/`tokenizers` van en el grupo opcional `openvla` (pin `transformers==4.40.1`, que es lo que espera el código remoto de OpenVLA). El adaptador importa `transformers` solo en `from_pretrained`, así que el resto del harness no depende del grupo. Se registra como `policy: {type: openvla}` (factory perezosa). Ejemplo de inferencia en `examples/openvla_smoke.py` y config de BC en `configs/openvla_bc.yaml`. Los pesos reales (~16 GB) no caben en la GPU de desarrollo: se corre en el cluster, y los tests de contrato con pesos reales irían marcados `heavy`.
+
 ### `ObservationProcessor`
 
 Convierte observaciones del formato común al formato del modelo. Es propio de cada modelo: tamaño de imagen, normalización de píxeles, tokenizador de la instrucción, qué cámaras usa. También es aquí donde se normaliza la propiocepción, si el modelo la usa.

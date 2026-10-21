@@ -23,7 +23,7 @@ Si al implementar necesitas desviarte del diseño (una firma, un tipo, una clase
 **Fuera (no implementar sin que se pida):**
 
 - Core, Environment, WorldModel y Reward Model reales.
-- Adaptadores de modelos reales (OpenVLA, π0, Octo) y `DiffusionActionHead` / `FlowMatchingActionHead`. El diseño debe permitirlos, pero no se escriben todavía.
+- Adaptadores de modelos reales (π0, Octo) y `DiffusionActionHead` / `FlowMatchingActionHead`. El diseño debe permitirlos, pero no se escriben todavía. **Excepción:** el adaptador `OpenVLAPolicy` ya se implementó a pedido (`policy/adapters/openvla.py`, grupo opcional `openvla`, `examples/openvla_smoke.py`, `configs/openvla_bc.yaml`); ver `docs/Learner Design.md`.
 - `EvalModelServer`: solo si se pide explícitamente, como dependencia opcional.
 
 ## Hardware: GPU limitada

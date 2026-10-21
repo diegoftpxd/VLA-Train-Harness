@@ -111,6 +111,30 @@ def _build_composed(
     return ComposedPolicy(bb, head, proc, norm, cabeza_valor)
 
 
+@Registry.register("policy", "openvla")
+def _build_openvla(
+    pretrained: str,
+    unnorm_key: str | None = None,
+    camera: str = "primary",
+    attn_implementation: str = "flash_attention_2",
+    torch_dtype: str | None = None,
+    device_map: Any = None,
+) -> Any:
+    # Importación perezosa: el adaptador carga ``transformers`` solo acá, así que
+    # el resto del harness no depende del grupo opcional ``openvla``.
+    from vla_learner.policy.adapters import OpenVLAPolicy
+
+    dtype = getattr(torch, torch_dtype) if torch_dtype else None
+    return OpenVLAPolicy.from_pretrained(
+        pretrained,
+        unnorm_key=unnorm_key,
+        camera=camera,
+        attn_implementation=attn_implementation,
+        torch_dtype=dtype,
+        device_map=device_map,
+    )
+
+
 @Registry.register("advantage", "gae")
 def _build_gae(gamma: float = 0.99, lam: float = 0.95) -> GAE:
     return GAE(gamma=gamma, lam=lam)

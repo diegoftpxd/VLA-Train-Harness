@@ -8,6 +8,11 @@ dependencies = [
     "vla-learner",
 ]
 
+# Expone el grupo opcional de vla-learner a nivel de workspace, para poder
+# instalarlo desde la raíz con `uv sync --extra openvla`.
+[project.optional-dependencies]
+openvla = ["vla-learner[openvla]"]
+
 # El root es un workspace virtual: no se empaqueta, solo agrupa los paquetes.
 [tool.uv]
 package = false

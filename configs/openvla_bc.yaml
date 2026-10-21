@@ -1,0 +1,42 @@
+# Fine-tuning de OpenVLA-7B con Behavior Cloning. Pensado para el cluster.
+#
+#   uv sync --extra openvla
+#   uv run vla-learner --config configs/openvla_bc.yaml
+#
+# A diferencia de los configs tiny, este carga pesos reales (~16 GB en bf16): no
+# corre en la RTX 2050 de desarrollo. Necesita un Core sirviendo demostraciones
+# compatibles con OpenVLA: imágenes RGB en la cámara `primary` y acciones de 7
+# dimensiones en unidades reales. El FakeCoreClient (acciones toy de 2 dims) NO
+# sirve acá. Levantá tu Core y apuntá `core.address` a su dirección.
+seed: 0
+
+device: cuda
+
+# Core real por ZeroMQ (ver docs/Architecture.md). Reemplazá la dirección.
+core: {type: zmq, address: "tcp://localhost:5555", timeout_s: 60}
+
+policy:
+  type: openvla
+  pretrained: openvla/openvla-7b   # id de HF o ruta local a un checkpoint
+  unnorm_key: bridge_orig          # estadísticas de desnormalización del dataset
+  camera: primary
+  attn_implementation: flash_attention_2   # usar "eager" si no hay flash-attn
+  torch_dtype: bfloat16
+
+# OpenVLA no tiene cabeza de valor: sirve para BC y GRPO, no para PPO.
+algorithm: {type: bc}
+
+# Demostraciones supervisadas desde el Core.
+data: {type: supervised, batch_size: 8}
+
+# lr bajo, típico de fine-tuning de un VLA grande. Con 4 GB no entra el modelo
+# completo; para entrenar con poca VRAM conviene congelar o aplicar LoRA (ver
+# docs/Learner Design.md, "Congelar y LoRA") — no implementado aún para OpenVLA.
+optimizer: {name: adamw, lr: 0.00005, grad_clip: 1.0, scheduler: null, precision: bf16}
+
+checkpoint: {directory: checkpoints/openvla_bc, every: 200, keep_last: 2}
+
+# El embodiment debe tener la cámara que el procesador de OpenVLA requiere.
+available_cameras: [primary]
+
+num_iterations: 1000

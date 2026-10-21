@@ -13,6 +13,15 @@ dependencies = [
 [project.scripts]
 vla-learner = "vla_learner.cli:main"
 
+[project.optional-dependencies]
+openvla = [
+    "accelerate>=0.25",
+    "pillow>=10.0",
+    "timm==0.9.10",
+    "tokenizers==0.19.1",
+    "transformers==4.40.1",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
