@@ -3190,10 +3190,14 @@ openvla = [
     { name = "tokenizers" },
     { name = "transformers" },
 ]
+pi0 = [
+    { name = "lerobot" },
+]
 
 [package.metadata]
 requires-dist = [
     { name = "accelerate", marker = "extra == 'openvla'", specifier = ">=0.25" },
+    { name = "lerobot", marker = "extra == 'pi0'", specifier = ">=0.4.4" },
     { name = "pillow", marker = "extra == 'openvla'", specifier = ">=10.0" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "pyzmq", specifier = ">=27.2.0" },
@@ -3203,7 +3207,7 @@ requires-dist = [
     { name = "transformers", marker = "extra == 'openvla'", specifier = "==4.40.1" },
     { name = "vla-common", editable = "packages/vla_common" },
 ]
-provides-extras = ["openvla"]
+provides-extras = ["openvla", "pi0"]
 
 [[package]]
 name = "vla-train-harness"
@@ -3219,6 +3223,9 @@ dependencies = [
 openvla = [
     { name = "vla-learner", extra = ["openvla"] },
 ]
+pi0 = [
+    { name = "vla-learner", extra = ["pi0"] },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -3233,8 +3240,9 @@ requires-dist = [
     { name = "vla-core", editable = "packages/vla_core" },
     { name = "vla-learner", editable = "packages/vla_learner" },
     { name = "vla-learner", extras = ["openvla"], marker = "extra == 'openvla'", editable = "packages/vla_learner" },
+    { name = "vla-learner", extras = ["pi0"], marker = "extra == 'pi0'", editable = "packages/vla_learner" },
 ]
-provides-extras = ["openvla"]
+provides-extras = ["openvla", "pi0"]
 
 [package.metadata.requires-dev]
 dev = [

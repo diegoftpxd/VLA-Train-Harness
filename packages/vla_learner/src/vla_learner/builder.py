@@ -36,7 +36,12 @@ from vla_learner.infra.logging import StdoutLogger
 from vla_learner.infra.optimizer import OptimizerConfig, OptimizerManager
 from vla_learner.learner import LearnerConfig
 from vla_learner.policy.composed import ComposedPolicy
-from vla_learner.policy.heads import GaussianActionHead, TokenActionHead, ValueHead
+from vla_learner.policy.heads import (
+    FlowMatchingActionHead,
+    GaussianActionHead,
+    TokenActionHead,
+    ValueHead,
+)
 from vla_learner.policy.normalizer import ActionNormalizer, ActionStats
 from vla_learner.policy.processors import SimpleProcessor
 from vla_learner.registry import Registry
@@ -68,6 +73,25 @@ def _build_token(
     feature_dim: int, action_dim: int, chunk_size: int, bins: int = 51
 ) -> TokenActionHead:
     return TokenActionHead(feature_dim, action_dim, chunk_size, bins=bins)
+
+
+@Registry.register("action_head", "flow_matching")
+def _build_flow_matching(
+    feature_dim: int,
+    action_dim: int,
+    chunk_size: int,
+    hidden_dim: int = 256,
+    num_sampling_steps: int = 10,
+    time_dim: int = 32,
+) -> FlowMatchingActionHead:
+    return FlowMatchingActionHead(
+        feature_dim,
+        action_dim,
+        chunk_size,
+        hidden_dim=hidden_dim,
+        num_sampling_steps=num_sampling_steps,
+        time_dim=time_dim,
+    )
 
 
 @Registry.register("processor", "simple")
@@ -137,6 +161,32 @@ def _build_openvla(
     # Fine-tuning parcial (``docs/learner/Learner Design.md``, "Congelar y LoRA"):
     # el factory decide qué se entrena. ``freeze: {trainable: [lm_head]}`` congela
     # todo salvo esos módulos.
+    if freeze and freeze.get("trainable"):
+        policy.freeze_except(list(freeze["trainable"]))
+    return policy
+
+
+@Registry.register("policy", "pi0")
+def _build_pi0(
+    pretrained: str = "lerobot/pi0_base",
+    cameras: list[str] | None = None,
+    image_size: int = 224,
+    torch_dtype: str | None = None,
+    device_map: Any = None,
+    freeze: dict | None = None,
+) -> Any:
+    # Importación perezosa: el adaptador carga ``lerobot`` solo acá (grupo opcional
+    # ``pi0``), así que el resto del harness no depende de él.
+    from vla_learner.policy.adapters import Pi0Policy
+
+    dtype = getattr(torch, torch_dtype) if torch_dtype else None
+    policy = Pi0Policy.from_pretrained(
+        pretrained,
+        cameras=cameras,
+        image_size=image_size,
+        torch_dtype=dtype,
+        device_map=device_map,
+    )
     if freeze and freeze.get("trainable"):
         policy.freeze_except(list(freeze["trainable"]))
     return policy

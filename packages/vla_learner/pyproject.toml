@@ -21,6 +21,9 @@ openvla = [
     "tokenizers==0.19.1",
     "transformers==4.40.1",
 ]
+pi0 = [
+    "lerobot>=0.4.4",
+]
 
 [build-system]
 requires = ["hatchling"]

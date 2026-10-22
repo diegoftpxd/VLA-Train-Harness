@@ -1,0 +1,34 @@
+# Flow matching con Behavior Cloning, en tamaño CPU. Corre en la máquina de
+# desarrollo (no necesita GPU ni pesos reales).
+#
+#   uv run vla-learner --config configs/flow_matching_bc.yaml
+#
+# Ejercita la MECÁNICA de π0 (campo de velocidad + muestreo por ODE) con la
+# `FlowMatchingActionHead` sobre `ComposedPolicy` y un backbone de prueba. Es un
+# bloque de construcción reutilizable, NO los pesos de π0: para el π0 **completo**
+# descargado de Hugging Face, ver `configs/pi0_bc.yaml` (policy type `pi0`).
+seed: 0
+
+# FakeCoreClient: demos toy de 2 dims. `demo_chunk_size` = `chunk_size` para que
+# el chunk de datos calce con el que predice la cabeza.
+core: {type: fake, seed: 0, demo_chunk_size: 4}
+
+policy:
+  type: composed
+  action_dim: 2
+  chunk_size: 4
+  feature_dim: 32
+  backbone: {type: tiny, seq_len: 1}
+  action_head: {type: flow_matching, hidden_dim: 128, num_sampling_steps: 10}
+  processor: {type: simple, cameras: [front]}
+  normalizer: {mode: mean_std}
+
+algorithm: {type: bc}
+
+data: {type: supervised, batch_size: 16}
+
+optimizer: {name: adamw, lr: 0.001, grad_clip: 1.0, scheduler: null, precision: fp32}
+
+checkpoint: {directory: checkpoints/flow_matching_bc, every: 50, keep_last: 2}
+
+num_iterations: 5

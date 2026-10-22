@@ -7,7 +7,12 @@ y ``SimpleProcessor``).
 """
 
 from vla_learner.policy.composed import ComposedPolicy
-from vla_learner.policy.heads import GaussianActionHead, TokenActionHead, ValueHead
+from vla_learner.policy.heads import (
+    FlowMatchingActionHead,
+    GaussianActionHead,
+    TokenActionHead,
+    ValueHead,
+)
 from vla_learner.policy.interfaces import (
     ActionHead,
     Backbone,
@@ -25,6 +30,7 @@ __all__ = [
     "Backbone",
     "Capability",
     "ComposedPolicy",
+    "FlowMatchingActionHead",
     "GaussianActionHead",
     "ObservationProcessor",
     "SimpleProcessor",

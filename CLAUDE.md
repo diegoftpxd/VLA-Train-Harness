@@ -39,7 +39,7 @@ Si al implementar necesitas desviarte del diseño (una firma, un tipo, una clase
 - **Environment, WorldModel y Reward Model reales** (simuladores, robot, pesos reales, VLM juez). Se reemplazan por fakes CPU. El WorldModel se asume preentrenado y congelado, y su entrenamiento es fuera de este harness.
 - **Los datos de los corpus reales** (Open-X, LeRobot, …). Los **adaptadores** ya existen y están dentro de alcance: `local` (layout on-disk, sin dependencias, `fast`), `lerobot` (grupo opcional uv `lerobot`, `heavy`) y `openx` (Open-X Embodiment / RLDS, grupo opcional uv `openx`, `heavy`), todos detrás de la factory `build_dataset` que mantiene a Core agnóstico del formato (ver `docs/dataset/Dataset Design.md`). Lo que queda fuera es **el corpus en sí**: el harness no incluye ni descarga los datos ni mete las dependencias pesadas al venv base; cada corpus aporta los suyos (o un snapshot local).
 - `EvalModelServer` / `PredictModelServer` y todo lo de evaluación: es una etapa posterior, fuera de este harness (ver `Architecture.md`, sección Evaluación).
-- Adaptadores de modelos reales nuevos del Learner (π0, Octo), `DiffusionActionHead` / `FlowMatchingActionHead`. El adaptador `OpenVLAPolicy` ya existe; los demás no se escriben sin que se pidan.
+- Adaptadores de modelos reales nuevos del Learner (Octo), `DiffusionActionHead`. Los adaptadores `OpenVLAPolicy` y `Pi0Policy` (π0 completo de LeRobot, grupo opcional `pi0`) y la `FlowMatchingActionHead` ya existen; los demás no se escriben sin que se pidan.
 - Memoria compartida para imágenes, migración a Ray o gRPC: solo si una medición lo justifica (ver `Architecture.md`).
 
 ## Hardware: Core es CPU; cuidado con los pesos
