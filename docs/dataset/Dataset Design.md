@@ -209,8 +209,11 @@ rama `Dataset`.
    config `configs/core/lerobot.yaml` y `test_dataset_lerobot.py` marcada `heavy` (gated por
    `VLA_LEROBOT_REPO_ID`, no corre aquí). En `fast`, `test_dataset_factory.py` verifica que
    construir `lerobot` sin el grupo da un `ImportError` claro.
-4. **`OpenXDataset` (opcional, posterior).** Solo cuando se pida: `uv add --optional openx`,
-   `dataset/openx.py` (RLDS/TFDS, filtro `embodiment`), suite `heavy`. Puede quedar como stub.
+4. ✅ **`OpenXDataset` (grupo opcional).** Grupo opcional uv `openx`
+   (`tensorflow-datasets`), `dataset/openx.py` (RLDS/TFDS, filtro `embodiment`, import
+   perezoso), `type: openx` en la factory, config `configs/core/openx.yaml` y
+   `test_dataset_openx.py` marcada `heavy` (gated por `VLA_OPENX_NAME`/`VLA_OPENX_BUILDER_DIR`).
+   En `fast`, `test_dataset_factory.py` verifica el `ImportError` claro sin el grupo.
 5. ✅ **Docs + alcance.** Actualizados `docs/dataset/README.md`, la sección "Datos" y el
    diagrama de estructura de `Core Design.md` (`dataset.py` → `dataset/`) y el "Alcance" de
    `CLAUDE.md` (`local` y `lerobot` implementados; solo `openx` queda fuera).

@@ -43,13 +43,6 @@ def test_fake_es_appendable() -> None:
     assert isinstance(ds, AppendableDataset)
 
 
-def test_tipo_pendiente_error_claro() -> None:
-    # Adaptadores anunciados pero aún no implementados dan NotImplementedError.
-    for tipo in ("openx",):
-        with pytest.raises(NotImplementedError):
-            build_dataset({"type": tipo})
-
-
 def test_tipo_desconocido_valueerror() -> None:
     with pytest.raises(ValueError):
         build_dataset({"type": "no_existe"})
@@ -63,3 +56,13 @@ def test_lerobot_requiere_grupo_opcional() -> None:
         pytest.skip("lerobot instalado; no aplica el error de dependencia faltante")
     with pytest.raises(ImportError):
         build_dataset({"type": "lerobot", "repo_id": "x"})
+
+
+def test_openx_requiere_grupo_opcional() -> None:
+    # Sin el grupo opcional instalado, construir 'openx' da un ImportError claro.
+    import importlib.util
+
+    if importlib.util.find_spec("tensorflow_datasets") is not None:
+        pytest.skip("tensorflow_datasets instalado; no aplica el error de dependencia faltante")
+    with pytest.raises(ImportError):
+        build_dataset({"type": "openx", "name": "x"})
