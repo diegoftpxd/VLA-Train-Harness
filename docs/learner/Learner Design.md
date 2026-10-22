@@ -313,7 +313,8 @@ Primer adaptador de un modelo real (implementado a pedido; antes estaba fuera de
 - **Normalización y tokens (dentro de la política).** Cada dimensión se normaliza a `[-1, 1]` con `q01`/`q99` del dataset elegido (`unnorm_key`) y una `mask` que indica qué dimensiones se normalizan (la pinza suele pasar sin tocar). La discretización replica a OpenVLA: `bins = linspace(-1, 1, 256)`; `token_id = vocab_size − digitize(a)`, que ocupa los últimos 256 ids del vocabulario de Llama.
 - **`act`.** Genera los 7 tokens con `generate` (greedy si `deterministic=True`, lo que satisface POL-04 sin tocar el estado aleatorio global), los desnormaliza a unidades reales y guarda los ids elegidos en `extras["action_token_ids"]`.
 - **`evaluate_actions` / `imitation_loss`.** Arman la secuencia `[prompt, tokens de acción]`, corren el modelo y toman los logits de las últimas posiciones (`logits[:, −n−1:−1]`): como los tokens de acción van al final, sus predicciones son las últimas `n`, **sin** depender de cuántos tokens de visión inserte el modelo. `evaluate_actions` reusa los ids de `extras` para no re-tokenizar (misma convención que `TokenActionHead`); `imitation_loss` es cross-entropy sobre esos tokens.
-- **Dependencias e integración.** `transformers`/`timm`/`tokenizers` van en el grupo opcional `openvla` (pin `transformers==4.40.1`, que es lo que espera el código remoto de OpenVLA). El adaptador importa `transformers` solo en `from_pretrained`, así que el resto del harness no depende del grupo. Se registra como `policy: {type: openvla}` (factory perezosa). Ejemplo de inferencia en `examples/openvla_smoke.py` y config de BC en `configs/openvla_bc.yaml`. Los pesos reales (~16 GB) no caben en la GPU de desarrollo: se corre en el cluster, y los tests de contrato con pesos reales irían marcados `heavy`.
+- **Fine-tuning parcial (`freeze_except`).** Implementa la decisión de "Congelar y LoRA": `freeze_except(trainable)` deja `requires_grad=True` solo en los parámetros cuyo nombre contenga alguno de los substrings dados (p. ej. `["lm_head"]` para entrenar únicamente la proyección de salida) y congela el resto. `trainable_parameters()` (heredado) devuelve entonces solo esa parte, así que ni el algoritmo ni el optimizador se enteran. Lo invoca el factory cuando el config trae `policy.freeze: {trainable: [...]}`; lanza `ValueError` si ningún parámetro coincide. Recorta la memoria de gradientes/optimizador, pero los pesos congelados igual se cargan (OpenVLA-7B sigue necesitando el cluster). LoRA todavía no está implementado para OpenVLA.
+- **Dependencias e integración.** `transformers`/`timm`/`tokenizers` van en el grupo opcional `openvla` (pin `transformers==4.40.1`, que es lo que espera el código remoto de OpenVLA). El adaptador importa `transformers` solo en `from_pretrained`, así que el resto del harness no depende del grupo. Se registra como `policy: {type: openvla}` (factory perezosa). Ejemplo de inferencia en `examples/openvla_smoke.py` y config de BC con fine-tuning parcial en `configs/openvla_bc.yaml`, servido por `configs/core/local_openvla.yaml` (dataset `local` con cámara `primary` y acciones de 7 dims). Los pesos reales (~16 GB) no caben en la GPU de desarrollo: se corre en el cluster, y los tests de contrato con pesos reales irían marcados `heavy`.
 
 ### `ObservationProcessor`
 
@@ -862,8 +863,8 @@ Con un adaptador de un modelo existente, solo cambia el bloque `policy`:
 ```yaml
 policy:
   type: openvla
-  checkpoint: openvla/openvla-7b
-  lora: {rank: 32}
+  pretrained: openvla/openvla-7b
+  freeze: {trainable: [lm_head]}   # fine-tuning parcial; LoRA aún no implementado
 ```
 
 ## Cómo encajan modelos conocidos

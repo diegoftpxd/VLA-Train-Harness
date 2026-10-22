@@ -1,0 +1,21 @@
+# Core con un Dataset `local` de demostraciones compatibles con OpenVLA: sirve el
+# flujo supervisado para el fine-tuning de `configs/openvla_bc.yaml`. Ver
+# docs/dataset/Dataset Design.md y docs/Architecture.md.
+#
+#   uv run vla-core --config configs/core/local_openvla.yaml
+#   uv run vla-learner --config configs/openvla_bc.yaml   # en otra terminal / cluster
+#
+# A diferencia de `local.yaml` (dataset toy 2D para la política compuesta), este
+# apunta a episodios con lo que OpenVLA necesita: cámara `primary` RGB [H, W, 3] y
+# acciones de 7 dims en unidades reales. El fixture es diminuto y determinista (no
+# descarga nada); los corpus reales (Bridge, Open-X) se sirven con los adaptadores
+# `openx`/`lerobot` apuntando `path`/dataset a su snapshot. El resto de componentes
+# (Environment, WorldModel, Reward Model) quedan fake: el flujo supervisado no los
+# toca. Core es CPU y solo enruta arrays; los pesos de OpenVLA viven en el Learner.
+server: { address: "tcp://127.0.0.1:5555" }
+backend: { type: fake }
+dataset:
+  type: local
+  path: packages/vla_core/tests/data/openvla_demo
+  cameras: { primary: primary } # nombre canónico -> clave en el npz
+  demo_chunk_size: 1

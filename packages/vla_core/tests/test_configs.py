@@ -36,7 +36,7 @@ def _servir(nombre: str) -> Iterator[CoreServer]:
         server.stop()
 
 
-@pytest.mark.parametrize("nombre", ["fake.yaml", "echo.yaml", "local.yaml"])
+@pytest.mark.parametrize("nombre", ["fake.yaml", "echo.yaml", "local.yaml", "local_openvla.yaml"])
 def test_config_se_construye_y_responde(nombre: str) -> None:
     with _servir(nombre) as server:
         client = CoreClient(server.address, timeout_s=5.0)
@@ -44,5 +44,23 @@ def test_config_se_construye_y_responde(nombre: str) -> None:
             ((episode_id, obs),) = client.reset(["e0"], seed=0)
             assert episode_id.startswith("e0")
             assert obs.proprio.dtype.kind == "f"
+        finally:
+            client.close()
+
+
+def test_local_openvla_sirve_demos_compatibles() -> None:
+    # Primera prueba de integración del flujo supervisado: el dataset `local`
+    # de `local_openvla.yaml` entrega lo que OpenVLA consume (cámara `primary` y
+    # acciones de 7 dims en unidades reales), viajando por la red vía CoreClient.
+    with _servir("local_openvla.yaml") as server:
+        client = CoreClient(server.address, timeout_s=5.0)
+        try:
+            pares = client.sample_supervised(4)
+            assert len(pares) == 4
+            obs, chunk = pares[0]
+            assert "primary" in obs.images
+            assert obs.images["primary"].ndim == 3  # [H, W, 3]
+            assert len(chunk) == 1  # demo_chunk_size=1
+            assert chunk[0].values.shape == (7,)
         finally:
             client.close()
