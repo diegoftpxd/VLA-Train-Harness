@@ -1,0 +1,24 @@
+# Core con un Dataset `openx`: demos supervisadas desde Open-X Embodiment (RLDS),
+# servido por tensorflow-datasets. La dependencia vive en el grupo opcional uv
+# `openx`:
+#
+#   uv sync --extra openx
+#   uv run vla-core --config configs/core/openx.yaml
+#
+# El bloque `dataset` lo consume `build_dataset` y se inyecta en el Core (resto
+# de componentes fake). Usar `name` (+ `data_dir`) para un dataset registrado, o
+# `builder_dir` para un snapshot RLDS local. Ver docs/dataset/Dataset Design.md.
+server: { address: "tcp://127.0.0.1:5555" }
+backend: { type: fake }
+dataset:
+  type: openx
+  name: bridge # dataset RLDS registrado (ejemplo)
+  # builder_dir: /ruta/a/snapshot/rlds   # alternativa offline a `name`
+  # data_dir: /ruta/a/tfds_data
+  split: train
+  cameras: { front: image } # nombre canónico -> clave dentro de observation
+  state_key: state
+  action_key: action
+  instruction_key: language_instruction
+  embodiment: bridge
+  demo_chunk_size: 1

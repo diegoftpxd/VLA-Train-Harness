@@ -207,6 +207,43 @@ def test_imitation_loss_propaga_gradientes() -> None:
     assert grads, "la loss de imitación no generó gradientes en el modelo"
 
 
+def test_freeze_except_deja_solo_lo_entrenable() -> None:
+    # Fine-tuning parcial: congela todo salvo ``head`` (análogo a ``lm_head`` en el
+    # modelo real). ``trainable_parameters()`` debe devolver solo esos parámetros.
+    policy = _policy()
+    policy.freeze_except(["head"])
+
+    entrenables = {nombre for nombre, p in policy.vla.named_parameters() if p.requires_grad}
+    assert entrenables == {"head.weight", "head.bias"}
+    n_entrenables = sum(1 for _ in policy.trainable_parameters())
+    assert n_entrenables == 2
+
+
+def test_freeze_except_un_paso_no_mueve_lo_congelado() -> None:
+    # POL-12 para OpenVLA: tras un paso del optimizador, solo cambia lo entrenable.
+    policy = _policy()
+    policy.freeze_except(["head"])
+    antes = {nombre: p.detach().clone() for nombre, p in policy.vla.named_parameters()}
+
+    optim = torch.optim.SGD(policy.trainable_parameters(), lr=0.1)
+    salida = policy.imitation_loss(_inputs(batch=4), torch.randn(4, 1, ACTION_DIM))
+    salida.loss.backward()
+    optim.step()
+
+    for nombre, p in policy.vla.named_parameters():
+        cambio = not torch.equal(antes[nombre], p.detach())
+        if nombre.startswith("head."):
+            assert cambio, f"{nombre} entrenable debió cambiar"
+        else:
+            assert not cambio, f"{nombre} congelado no debió cambiar"
+
+
+def test_freeze_except_patron_sin_coincidencia_es_error() -> None:
+    policy = _policy()
+    with pytest.raises(ValueError, match="Ningún parámetro coincide"):
+        policy.freeze_except(["no_existe"])
+
+
 def test_registrado_en_builder() -> None:
     # Importar el builder registra la policy "openvla" sin cargar transformers.
     import vla_learner.builder  # noqa: F401

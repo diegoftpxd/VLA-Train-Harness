@@ -189,6 +189,37 @@ class OpenVLAPolicy(VLAPolicy):
         self.register_buffer("_bins", bins)
         self.register_buffer("_bin_centers", (bins[:-1] + bins[1:]) / 2.0)
 
+    # -- Fine-tuning parcial --------------------------------------------
+
+    def freeze_except(self, trainable: list[str]) -> None:
+        """Congela todos los pesos salvo los que entrenamos (fine-tuning parcial).
+
+        Deja ``requires_grad=True`` solo en los parámetros cuyo nombre calificado
+        contenga alguno de los substrings de ``trainable`` (p. ej. ``["lm_head"]``
+        para entrenar únicamente la proyección de salida a tokens de acción). El
+        resto queda congelado. Como fija ``docs/learner/Learner Design.md``
+        ("Congelar y LoRA"), esto se decide al construir la política: ni el
+        algoritmo ni el optimizador se enteran, porque ``trainable_parameters()``
+        (heredado) ya devuelve solo lo que tiene ``requires_grad``.
+
+        Entrenar una parte chica recorta la memoria de gradientes y del estado del
+        optimizador; los pesos congelados igual se cargan, así que OpenVLA-7B sigue
+        necesitando el cluster. Lanza ``ValueError`` si ningún parámetro coincide,
+        para que un patrón mal escrito no deje la política entera congelada.
+        """
+        coincide = False
+        for nombre, parametro in self.vla.named_parameters():
+            entrenar = any(patron in nombre for patron in trainable)
+            parametro.requires_grad_(entrenar)
+            coincide = coincide or entrenar
+        if not coincide:
+            nombres = (nombre for nombre, _ in self.vla.named_parameters())
+            disponibles = sorted({nombre.split(".")[0] for nombre in nombres})
+            raise ValueError(
+                f"Ningún parámetro coincide con trainable={trainable!r}; "
+                f"módulos de nivel superior disponibles: {disponibles}"
+            )
+
     # -- Propiedades de la interfaz -------------------------------------
 
     @property

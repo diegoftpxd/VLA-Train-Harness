@@ -1,0 +1,20 @@
+# Core con un Dataset `lerobot`: demos supervisadas desde un corpus LeRobot
+# (HuggingFace). La dependencia vive en el grupo opcional uv `lerobot`:
+#
+#   uv sync --extra lerobot
+#   uv run vla-core --config configs/core/lerobot.yaml
+#
+# El bloque `dataset` lo consume `build_dataset` y se inyecta en el Core (resto
+# de componentes fake). `repo_id` identifica el corpus; `root` (opcional) apunta
+# a un snapshot local para trabajar offline. Ver docs/dataset/Dataset Design.md.
+server: { address: "tcp://127.0.0.1:5555" }
+backend: { type: fake }
+dataset:
+  type: lerobot
+  repo_id: lerobot/pusht # reemplazar por el corpus deseado
+  # root: /ruta/a/snapshot/local      # opcional, para trabajar offline
+  cameras: { front: observation.images.top } # nombre canónico -> clave del frame
+  state_key: observation.state
+  action_key: action
+  task_key: task
+  demo_chunk_size: 1

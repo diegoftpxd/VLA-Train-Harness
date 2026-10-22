@@ -13,6 +13,14 @@ dependencies = [
 [project.scripts]
 vla-core = "vla_core.cli:main"
 
+[project.optional-dependencies]
+lerobot = [
+    "lerobot>=0.1",
+]
+openx = [
+    "tensorflow-datasets>=4.9",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
