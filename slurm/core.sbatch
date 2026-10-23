@@ -21,7 +21,19 @@
 #SBATCH --output=slurm/logs/%x-%j.out
 #SBATCH --error=slurm/logs/%x-%j.err
 
-source "$(dirname "$0")/common.sh"
+# Slurm copia este script a un spool temporal, así que "$0" NO apunta al repo.
+# common.sh vive en <repo>/slurm; se localiza vía REPO_ROOT o el directorio desde
+# donde se mandó el job (la raíz del repo, ver README), con el dir de "$0" como
+# último recurso (corrida a mano, no bajo sbatch).
+_COMMON=""
+for _d in "${REPO_ROOT:-}/slurm" "${SLURM_SUBMIT_DIR:-}/slurm" "$(dirname "$0")"; do
+    if [[ -f "${_d}/common.sh" ]]; then _COMMON="${_d}/common.sh"; break; fi
+done
+if [[ -z "${_COMMON}" ]]; then
+    echo "ERROR: no encuentro slurm/common.sh (mandá el job desde la raíz del repo o exportá REPO_ROOT)." >&2
+    exit 1
+fi
+source "${_COMMON}"
 
 mkdir -p slurm/logs slurm/rendezvous
 

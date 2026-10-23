@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Helpers compartidos por los scripts de Slurm del harness.
 #
-# Se incluye con `source "$(dirname "$0")/common.sh"` desde cada .sbatch. No es
-# ejecutable por sí mismo: solo define funciones y variables.
+# Cada .sbatch lo localiza vía SLURM_SUBMIT_DIR/REPO_ROOT y lo sourcea (Slurm
+# copia el script a un spool temporal, así que "$0" no sirve). No es ejecutable
+# por sí mismo: solo define funciones y variables.
 #
 # Responsabilidades:
 #   - localizar la raíz del workspace de uv (donde vive pyproject.toml),
