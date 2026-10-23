@@ -46,7 +46,8 @@
 #SBATCH --partition=ialab-low-unlimit
 #SBATCH --gres=gpu:2080_ti:1
 #SBATCH --qos=debug
-#SBATCH --output=slurm/logs/%x.log
+#SBATCH --output=slurm/logs/%x-%j.out
+#SBATCH --error=slurm/logs/%x-%j.err
 #SBATCH --time=1:00:00
 #SBATCH --nodelist=scylla
 
@@ -76,10 +77,18 @@ echo ">> π0 smoke: model=${MODEL} freeze=${FREEZE} train_steps=${TRAIN_STEPS} b
 # `uv run --extra pi0` sincroniza el grupo opcional (lerobot + torch) y corre el
 # ejemplo. `--freeze` congela todo salvo los módulos que contengan ese substring;
 # `--train-steps` hace unos pocos pasos de BC sobre datos sintéticos.
-uv run --extra pi0 python examples/pi0_smoke.py \
+# Salida COMPLETA (stdout+stderr) a un archivo propio, además de la de Slurm:
+# `python -u` desactiva el buffering (no se pierde el traceback si falla) y el
+# `tee` deja una copia cruda que el epílogo del cluster no toca. `set -o pipefail`
+# (de common.sh) hace que el fallo de uv/python se propague pese al `tee`.
+export PYTHONUNBUFFERED=1
+DEBUG_LOG="slurm/logs/${SLURM_JOB_NAME:-pi0_smoke}-${SLURM_JOB_ID:-local}.debug.log"
+echo ">> Volcando salida completa a ${DEBUG_LOG}"
+
+uv run --extra pi0 python -u examples/pi0_smoke.py \
     --model "${MODEL}" \
     --freeze "${FREEZE}" \
     --train-steps "${TRAIN_STEPS}" \
-    --batch-size "${BATCH_SIZE}"
+    --batch-size "${BATCH_SIZE}" 2>&1 | tee "${DEBUG_LOG}"
 
 echo ">> π0 smoke OK."
