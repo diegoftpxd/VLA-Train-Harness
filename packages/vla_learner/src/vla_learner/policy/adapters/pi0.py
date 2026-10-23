@@ -334,18 +334,33 @@ class _LeRobotPi0Model(nn.Module):
         return cls(lerobot_policy)
 
     def _batch(self, cond: dict[str, Tensor], actions: Tensor | None) -> dict[str, Any]:
-        """Arma el batch que espera ``PI0Policy`` de LeRobot a partir del ``cond``."""
-        # El procesador nombra las imágenes ``image.<cam>``; LeRobot espera la clave
-        # cruda de ``config.image_features`` (p. ej. ``observation.images.base_0_rgb``),
-        # así que se le quita el prefijo ``image.``.
+        """Arma el batch que espera ``PI0Policy`` de LeRobot a partir del ``cond``.
+
+        Las claves son EXACTAMENTE las que lee ``modeling_pi0.py`` (en
+        ``predict_action_chunk`` y ``forward``): las imágenes por la clave cruda de
+        ``config.image_features`` (``observation.images.<cam>``), y estado, lenguaje y
+        acción por las constantes ``OBS_STATE``/``OBS_LANGUAGE_*``/``ACTION`` de
+        LeRobot. Se importan de ``lerobot`` (perezosamente, como el resto del wrapper)
+        en vez de escribir los strings a mano, para no desincronizarnos si LeRobot
+        los renombra: ``observation.language.tokens`` lleva PUNTO, no guion bajo.
+        """
+        from lerobot.utils.constants import (  # pyright: ignore[reportMissingImports]
+            ACTION,
+            OBS_LANGUAGE_ATTENTION_MASK,
+            OBS_LANGUAGE_TOKENS,
+            OBS_STATE,
+        )
+
+        # El procesador nombra las imágenes ``image.<cam>``; LeRobot las busca por la
+        # clave cruda de ``config.image_features``, así que se le quita el prefijo.
         batch: dict[str, Any] = {
             k.removeprefix("image."): v for k, v in cond.items() if k.startswith("image.")
         }
-        batch["observation.state"] = cond["state"]
-        batch["observation.language_tokens"] = cond["lang_tokens"]
-        batch["observation.language_attention_mask"] = cond["lang_masks"]
+        batch[OBS_STATE] = cond["state"]
+        batch[OBS_LANGUAGE_TOKENS] = cond["lang_tokens"]
+        batch[OBS_LANGUAGE_ATTENTION_MASK] = cond["lang_masks"]
         if actions is not None:
-            batch["action"] = actions
+            batch[ACTION] = actions
         return batch
 
     def compute_loss(self, cond: dict[str, Tensor], actions: Tensor) -> Tensor:
