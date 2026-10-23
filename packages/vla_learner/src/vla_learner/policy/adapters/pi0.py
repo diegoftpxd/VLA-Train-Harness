@@ -335,7 +335,12 @@ class _LeRobotPi0Model(nn.Module):
 
     def _batch(self, cond: dict[str, Tensor], actions: Tensor | None) -> dict[str, Any]:
         """Arma el batch que espera ``PI0Policy`` de LeRobot a partir del ``cond``."""
-        batch: dict[str, Any] = {k: v for k, v in cond.items() if k.startswith("image.")}
+        # El procesador nombra las imágenes ``image.<cam>``; LeRobot espera la clave
+        # cruda de ``config.image_features`` (p. ej. ``observation.images.base_0_rgb``),
+        # así que se le quita el prefijo ``image.``.
+        batch: dict[str, Any] = {
+            k.removeprefix("image."): v for k, v in cond.items() if k.startswith("image.")
+        }
         batch["observation.state"] = cond["state"]
         batch["observation.language_tokens"] = cond["lang_tokens"]
         batch["observation.language_attention_mask"] = cond["lang_masks"]
