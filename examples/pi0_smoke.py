@@ -29,11 +29,22 @@ from vla_learner.policy.adapters import Pi0Policy
 from vla_learner.types import SupervisedBatch
 
 
-def _fake_observation(instruction: str, size: int = 224) -> Observation:
-    """Una observación sintética: imagen RGB aleatoria + propiocepción + instrucción."""
-    image = np.random.randint(0, 256, (size, size, 3), dtype=np.uint8)
+def _fake_observation(
+    instruction: str,
+    cameras: list[str] | tuple[str, ...] = ("primary",),
+    size: int = 224,
+) -> Observation:
+    """Una observación sintética: imagen RGB aleatoria por cámara + propiocepción + instrucción.
+
+    Las cámaras se pasan desde ``processor.required_cameras``: el π0 real de LeRobot
+    las nombra según su config (p. ej. ``observation.images.base_0_rgb``), no
+    ``"primary"``, así que la observación falsa tiene que usar esos mismos nombres.
+    """
+    images = {
+        cam: np.random.randint(0, 256, (size, size, 3), dtype=np.uint8) for cam in cameras
+    }
     return Observation(
-        images={"primary": image},
+        images=images,
         proprio=np.zeros(7, dtype=np.float32),
         instruction=instruction,
     )
@@ -66,7 +77,8 @@ def main() -> None:
     )
 
     # --- Inferencia: un chunk de acciones a partir de una observación sintética ---
-    obs = [_fake_observation(args.instruction) for _ in range(args.batch_size)]
+    cameras = policy.processor.required_cameras
+    obs = [_fake_observation(args.instruction, cameras) for _ in range(args.batch_size)]
     model_input = policy.processor(obs)
     output = policy.act(model_input, deterministic=True)
     print("\n=== act() ===")
