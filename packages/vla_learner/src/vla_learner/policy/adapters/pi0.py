@@ -178,10 +178,6 @@ class Pi0Policy(VLAPolicy):
     def _device(self) -> torch.device:
         return next(self.model.parameters()).device
 
-    @property
-    def _dtype(self) -> torch.dtype:
-        return next(self.model.parameters()).dtype
-
     # -- Fine-tuning parcial --------------------------------------------
 
     def freeze_except(self, trainable: list[str]) -> None:
@@ -207,14 +203,14 @@ class Pi0Policy(VLAPolicy):
     # -- Interno ---------------------------------------------------------
 
     def _move_cond(self, inputs: ModelInput) -> dict[str, Tensor]:
-        """Mueve el ``cond`` al device del modelo; los flotantes también al dtype."""
-        moved: dict[str, Tensor] = {}
-        for nombre, tensor in inputs.tensors.items():
-            tensor = tensor.to(self._device)
-            if tensor.is_floating_point():
-                tensor = tensor.to(self._dtype)
-            moved[nombre] = tensor
-        return moved
+        """Mueve el ``cond`` al device del modelo (NO castea el dtype).
+
+        π0 tiene precisión MIXTA (PaliGemma bf16, action expert y proyecciones de flow
+        matching float32), así que no hay un dtype único al que castear: se alimentan
+        los tensores en float32 (como un dataloader de LeRobot) y el modelo castea
+        internamente lo que cada submódulo necesita.
+        """
+        return {nombre: tensor.to(self._device) for nombre, tensor in inputs.tensors.items()}
 
     # -- Interfaz VLAPolicy ---------------------------------------------
 
@@ -239,7 +235,9 @@ class Pi0Policy(VLAPolicy):
 
     def imitation_loss(self, inputs: ModelInput, actions: Tensor) -> LossOutput:
         cond = self._move_cond(inputs)
-        loss = self.model.compute_loss(cond, actions.to(self._device, self._dtype))
+        # Se mueve solo al device; el dtype queda en float32 (ver ``_move_cond``): el
+        # flow matching de π0 mezcla estas acciones con ruido float32.
+        loss = self.model.compute_loss(cond, actions.to(self._device))
         return LossOutput(loss=loss, metrics={"fm_mse": float(loss.detach())})
 
     # -- Persistencia ----------------------------------------------------
@@ -318,18 +316,36 @@ class _LeRobotPi0Model(nn.Module):
     @classmethod
     def from_pretrained(cls, source: str | Path, *, torch_dtype: Any = None) -> _LeRobotPi0Model:
         try:
-            # Layout de lerobot 0.4.x (el fijado en el grupo opcional ``pi0``).
-            from lerobot.common.policies.pi0.modeling_pi0 import (  # pyright: ignore[reportMissingImports]
-                PI0Policy,
+            # Layout de lerobot >=0.4.x (el fijado en el grupo opcional ``pi0``).
+            from lerobot.policies.pi0.configuration_pi0 import (  # pyright: ignore[reportMissingImports]
+                PI0Config,
             )
-        except ImportError:  # pragma: no cover - layout de versiones más nuevas
             from lerobot.policies.pi0.modeling_pi0 import (  # pyright: ignore[reportMissingImports]
                 PI0Policy,
             )
+        except ImportError:  # pragma: no cover - layout antiguo (lerobot.common.*)
+            from lerobot.common.policies.pi0.configuration_pi0 import (  # pyright: ignore[reportMissingImports]
+                PI0Config,
+            )
+            from lerobot.common.policies.pi0.modeling_pi0 import (  # pyright: ignore[reportMissingImports]
+                PI0Policy,
+            )
 
-        lerobot_policy = PI0Policy.from_pretrained(str(source))
+        # π0 usa precisión MIXTA por diseño: PaliGemma en bf16 pero el action expert
+        # y las proyecciones del flow matching (``action_in_proj``/``state_proj``) en
+        # float32, y el ruido se samplea float32. LeRobot gobierna ese esquema con
+        # ``config.dtype``. Un ``.to(dtype)`` GLOBAL lo rompería: convertiría esas
+        # proyecciones a bf16 y chocarían con el ruido float32 ("mat1 and mat2 must
+        # have the same dtype"). Por eso la precisión se fija vía config, no con ``.to``.
+        config = None
         if torch_dtype is not None:
-            lerobot_policy = lerobot_policy.to(dtype=torch_dtype)
+            precision = {torch.bfloat16: "bfloat16", torch.float32: "float32"}.get(torch_dtype)
+            if precision is None:
+                raise ValueError(f"π0 solo soporta bfloat16 o float32, no {torch_dtype}.")
+            config = PI0Config.from_pretrained(str(source))
+            config.dtype = precision
+
+        lerobot_policy = PI0Policy.from_pretrained(str(source), config=config)
         lerobot_policy.eval()
         return cls(lerobot_policy)
 
