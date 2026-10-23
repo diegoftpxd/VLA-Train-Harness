@@ -1,0 +1,8 @@
+# Proceso Dataset del flujo supervisado de 3 procesos.
+#
+#   uv run vla-core-dataset --config configs/core/dataset.yaml
+#
+# Sirve un FakeDataset (demos reach 2D, acciones en unidades reales) por ZeroMQ.
+# Core se conecta a esta dirección con un DatasetClient (ver configs/core/supervised.yaml).
+server: { address: "tcp://127.0.0.1:5556" }
+dataset: { seed: 0, demo_chunk_size: 1 }

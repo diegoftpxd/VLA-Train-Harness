@@ -3223,9 +3223,6 @@ dependencies = [
 openvla = [
     { name = "vla-learner", extra = ["openvla"] },
 ]
-pi0 = [
-    { name = "vla-learner", extra = ["pi0"] },
-]
 
 [package.dev-dependencies]
 dev = [
@@ -3240,9 +3237,8 @@ requires-dist = [
     { name = "vla-core", editable = "packages/vla_core" },
     { name = "vla-learner", editable = "packages/vla_learner" },
     { name = "vla-learner", extras = ["openvla"], marker = "extra == 'openvla'", editable = "packages/vla_learner" },
-    { name = "vla-learner", extras = ["pi0"], marker = "extra == 'pi0'", editable = "packages/vla_learner" },
 ]
-provides-extras = ["openvla", "pi0"]
+provides-extras = ["openvla"]
 
 [package.metadata.requires-dev]
 dev = [

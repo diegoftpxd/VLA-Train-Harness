@@ -1,0 +1,34 @@
+# Proceso Learner del flujo supervisado de 3 procesos: Behavior Cloning contra
+# un Core real por ZeroMQ.
+#
+#   uv run vla-learner --config configs/supervised_e2e.yaml
+#
+# Política tiny en CPU para que el flujo corra en cualquier máquina. Para el
+# cluster, reemplazá el bloque `policy` por uno de modelo real (ver
+# configs/openvla_bc.yaml, policy: {type: openvla, ...}); el resto no cambia.
+# π0 todavía no tiene adaptador en el repo (necesita FlowMatchingActionHead): su
+# bloque `policy` iría acá cuando exista, sin tocar Core ni el Dataset.
+seed: 0
+
+# Core real por ZeroMQ (lo levanta configs/core/supervised.yaml).
+core: { type: zmq, address: "tcp://127.0.0.1:5555", timeout_s: 30 }
+
+policy:
+  type: composed
+  action_dim: 2
+  chunk_size: 1
+  feature_dim: 16
+  backbone: { type: tiny, seq_len: 1 }
+  action_head: { type: gaussian }
+  processor: { type: simple, cameras: [front] }
+  normalizer: { mode: mean_std }
+
+algorithm: { type: bc }
+
+data: { type: supervised, batch_size: 8 }
+
+optimizer: { name: adamw, lr: 0.001, grad_clip: 1.0, scheduler: null, precision: fp32 }
+
+checkpoint: { directory: checkpoints/supervised_e2e, every: 20, keep_last: 2 }
+
+num_iterations: 30

@@ -297,11 +297,9 @@ Cabezas de acción previstas:
 |`TokenActionHead`|Acciones discretizadas como tokens, autoregresivo|Sí|Cross-entropy|
 |`GaussianActionHead`|Media y desviación por dimensión (init opcional: `init_zero` pone la media en 0 y `init_log_std` fija la desviación inicial, útil para arrancar RL con una política neutra)|Sí|Log-likelihood negativa|
 |`DiffusionActionHead`|Denoising iterativo|No|Denoising (MSE sobre ruido)|
-|`FlowMatchingActionHead`|Integración de un campo de velocidad (Euler)|No|Flow matching (MSE de velocidad)|
+|`FlowMatchingActionHead`|Integración de un campo de velocidad|No|Flow matching|
 
 La `TokenActionHead` de referencia discretiza cada dimensión de forma independiente por posición (no autoregresiva), lo cual basta para las suites; un modelo verdaderamente autoregresivo (OpenVLA) entra como adaptador. Para evitar el redondeo al re-tokenizar en `evaluate_actions`, los ids elegidos viajan en `extras`. Como la discretización es estable (token → acción → token devuelve el mismo token), la consistencia de POL-09 es exacta en fp32.
-
-**`FlowMatchingActionHead` (implementada).** Es la cabeza de π0 / π0.5. No predice una distribución explícita sino un campo de velocidad `v_θ(features, x_t, t)` (un MLP condicionado en las features del backbone, el punto `x_t` y un embedding del tiempo). Entrena con *rectified flow*: para la acción objetivo normalizada `a1` sortea `t ~ U(0,1)` y ruido `eps ~ N(0,I)`, arma `x_t = t·a1 + (1−t)·eps` y hace MSE entre `v_θ` y la velocidad del camino recto `u = a1 − eps`. Muestrea integrando el ODE con Euler en `num_sampling_steps` pasos (`deterministic=True` arranca del origen → POL-04; `deterministic=False` arranca de ruido del RNG global → POL-05). **Capacidades: ninguna** — el flow matching no da log-prob tratable, así que `log_prob`/`entropy` lanzan `NotImplementedError` y la cabeza es compatible solo con BC (y un futuro `RewardWeightedBC`), no con PPO/GRPO. Pasa el `VLAPolicyContract` completo por su rama sin `LOG_PROB`. Se registra como `action_head: {type: flow_matching}` y corre en CPU; config de ejemplo en `configs/pi0_bc.yaml`.
 
 **Modelos que no se pueden separar.** Si un VLA preentrenado viene como un bloque y no conviene partirlo, se implementa `VLAPolicy` directo con un adaptador (por ejemplo `OpenVLAPolicy`). El resto del Learner no nota la diferencia.
 
@@ -317,15 +315,6 @@ Primer adaptador de un modelo real (implementado a pedido; antes estaba fuera de
 - **`evaluate_actions` / `imitation_loss`.** Arman la secuencia `[prompt, tokens de acción]`, corren el modelo y toman los logits de las últimas posiciones (`logits[:, −n−1:−1]`): como los tokens de acción van al final, sus predicciones son las últimas `n`, **sin** depender de cuántos tokens de visión inserte el modelo. `evaluate_actions` reusa los ids de `extras` para no re-tokenizar (misma convención que `TokenActionHead`); `imitation_loss` es cross-entropy sobre esos tokens.
 - **Fine-tuning parcial (`freeze_except`).** Implementa la decisión de "Congelar y LoRA": `freeze_except(trainable)` deja `requires_grad=True` solo en los parámetros cuyo nombre contenga alguno de los substrings dados (p. ej. `["lm_head"]` para entrenar únicamente la proyección de salida) y congela el resto. `trainable_parameters()` (heredado) devuelve entonces solo esa parte, así que ni el algoritmo ni el optimizador se enteran. Lo invoca el factory cuando el config trae `policy.freeze: {trainable: [...]}`; lanza `ValueError` si ningún parámetro coincide. Recorta la memoria de gradientes/optimizador, pero los pesos congelados igual se cargan (OpenVLA-7B sigue necesitando el cluster). LoRA todavía no está implementado para OpenVLA.
 - **Dependencias e integración.** `transformers`/`timm`/`tokenizers` van en el grupo opcional `openvla` (pin `transformers==4.40.1`, que es lo que espera el código remoto de OpenVLA). El adaptador importa `transformers` solo en `from_pretrained`, así que el resto del harness no depende del grupo. Se registra como `policy: {type: openvla}` (factory perezosa). Ejemplo de inferencia en `examples/openvla_smoke.py` y config de BC con fine-tuning parcial en `configs/openvla_bc.yaml`, servido por `configs/core/local_openvla.yaml` (dataset `local` con cámara `primary` y acciones de 7 dims). Los pesos reales (~16 GB) no caben en la GPU de desarrollo: se corre en el cluster, y los tests de contrato con pesos reales irían marcados `heavy`.
-
-### Adaptador `Pi0Policy`
-
-Segundo adaptador de un modelo real, implementado a pedido: el **π0 completo** (Physical Intelligence) descargado de Hugging Face. π0 es un VLA de *flow matching* (PaliGemma-3B + action expert) que predice un chunk de acciones continuas transportando ruido; viene como un bloque de LeRobot, así que entra como adaptador `VLAPolicy` directo en `policy/adapters/pi0.py`, no como `ComposedPolicy`. Es el π0 **pesado** de verdad; la `FlowMatchingActionHead` sobre `ComposedPolicy` es solo la *mecánica* del objetivo en CPU, para experimentar sin pesos.
-
-- **Capacidades: ninguna.** Flow matching no da log-prob tratable: no declara `LOG_PROB`/`ENTROPY` (`evaluate_actions` lanza `NotImplementedError`) ni valor. Compatible con **BC** (y un futuro `RewardWeightedBC`), no con PPO/GRPO. `chunk_size`/`action_dim` salen de la config del checkpoint.
-- **Delegación del flow matching.** El adaptador no reimplementa el objetivo: delega en el modelo envuelto (`compute_loss(cond, actions)` / `predict_chunk(cond)`), que normaliza adentro (el resto del harness pasa unidades reales). `Pi0Processor` arma el `cond` (imágenes `[B,C,H,W]` en `[0,1]`, estado, y lenguaje tokenizado con el tokenizador de PaliGemma del checkpoint).
-- **Fine-tuning parcial.** Reusa la mecánica `freeze_except` (p. ej. `freeze: {trainable: [action]}` entrena solo el action expert y congela PaliGemma).
-- **Aislado y opcional.** `lerobot` vive en el grupo opcional de uv `pi0` (`lerobot>=0.4.4`), se importa **solo** en `from_pretrained` y toda la glue específica de la versión de LeRobot se aísla en `_LeRobotPi0Model` (el único punto a ajustar si cambia la API, como el `trust_remote_code` de OpenVLA). Así no interfiere con los demás modelos. Se registra como `policy: {type: pi0}`. Ejemplo en `examples/pi0_smoke.py`, config de BC en `configs/pi0_bc.yaml`. Pesos ~7 GB: cluster-only, tests con pesos reales marcados `heavy`; en la máquina de desarrollo se prueba con un modelo falso diminuto.
 
 ### `ObservationProcessor`
 
@@ -885,7 +874,7 @@ El primer modelo se elige al implementar. Esta tabla sirve para comprobar que la
 |Modelo|Cómo se integra|Cabeza|`LOG_PROB`|Algoritmos que admite|
 |---|---|---|---|---|
 |OpenVLA|Adaptador `VLAPolicy` sobre el modelo de Hugging Face|Tokens (256 bins)|Sí|BC, GRPO; PPO agregando una `ValueHead`|
-|π0 / π0.5|**Implementado** como adaptador `Pi0Policy` sobre el π0 completo de LeRobot (pesos reales de HF, grupo opcional `pi0`). La `FlowMatchingActionHead` sobre `ComposedPolicy` da la misma mecánica en CPU, sin pesos|Flow matching|No|BC, `RewardWeightedBC`|
+|π0 / π0.5|Adaptador sobre la versión de LeRobot u openpi, o `ComposedPolicy` con backbone PaliGemma y `FlowMatchingActionHead`|Flow matching|No|BC, `RewardWeightedBC`|
 |Octo|Adaptador o `ComposedPolicy` con `DiffusionActionHead`|Diffusion|No|BC, `RewardWeightedBC`|
 |Políticas de LeRobot (ACT, Diffusion Policy)|Adaptador genérico sobre `PreTrainedPolicy` de LeRobot|Según la política|Según la política|Según capacidades|
 

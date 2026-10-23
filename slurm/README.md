@@ -22,6 +22,7 @@ la misma.
 | Script | Nodos | GPU | Qué hace |
 |---|---|---|---|
 | `smoke_cpu.sbatch` | 1 | no | Valida el entorno: contratos `fast` + BC tiny en CPU |
+| `pi0_smoke.sbatch` | 1 | sí | Prueba de entrenamiento mínimo de π0: unos pasos de BC con solo el *action expert* entrenable (resto congelado) |
 | `train_openvla_bc.sbatch` | 1 | sí | Core + Learner en el mismo nodo (OpenVLA BC) |
 | `core.sbatch` + `learner.sbatch` | 2 | sí (Learner) | Core en CPU y Learner en GPU, en nodos separados |
 
@@ -37,6 +38,48 @@ Comprueba que uv y el harness corren en un nodo de cómputo, sin GPU ni pesos:
 ```bash
 sbatch slurm/smoke_cpu.sbatch
 ```
+
+### Prueba de entrenamiento mínimo de π0 (GPU)
+
+Carga el π0 completo (pesos reales vía LeRobot), **congela todo salvo una sección
+pequeña** —por defecto el *action expert*, dejando PaliGemma congelado— y corre
+unos pocos pasos de Behavior Cloning sobre datos sintéticos. Es autocontenido: no
+levanta Core ni Dataset. Sirve para confirmar que los pesos cargan y caben en la
+GPU, que el congelado parcial deja entrenable solo lo pedido, y que el bucle
+`loss → backward → step` avanza (imprime `fm_mse` y `grad_norm` por paso).
+
+```bash
+sbatch slurm/pi0_smoke.sbatch
+```
+
+Parámetros opcionales por variable de entorno (con sus valores por defecto):
+
+```bash
+MODEL=lerobot/pi0_base \
+FREEZE=action \
+TRAIN_STEPS=5 \
+BATCH_SIZE=2 \
+sbatch slurm/pi0_smoke.sbatch
+```
+
+- `FREEZE` es el *substring* de los módulos que quedan entrenables: `freeze_except`
+  congela todo lo demás. `action` entrena solo el *action expert*; probá otro
+  nombre de módulo para fine-tunear otra sección.
+- La corrida usa el grupo opcional de uv `pi0` (`uv run --extra pi0`, arrastra
+  `lerobot` + `torch`): el script lo instala solo.
+- **Primera corrida:** descarga ~7 GB de pesos de Hugging Face. Si tu `$HOME` es
+  chico, exportá `HF_HOME` a un disco con espacio antes del `sbatch`.
+- Memoria: π0 ocupa ~7 GB en bf16; con solo el *action expert* entrenable, una
+  GPU de ≥16 GB alcanza.
+
+Revisá en el log (`slurm/logs/vla-pi0-smoke-<JOBID>.out`) que la loss `fm_mse`
+cambie entre pasos y que `grad_norm` sea finito y > 0: eso confirma que la sección
+entrenable recibe gradientes.
+
+Para pasar de esta prueba al **entrenamiento supervisado completo** (demos reales
+servidas por Core, no datos sintéticos), usá `configs/pi0_bc.yaml` con el flujo de
+`train_openvla_bc.sbatch` como plantilla (cambiando los configs de OpenVLA por los
+de π0).
 
 ### OpenVLA BC en un solo nodo (recomendado)
 
