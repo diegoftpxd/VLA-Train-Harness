@@ -23,12 +23,14 @@ openvla = [
 ]
 pi0 = [
     "lerobot>=0.4.4",
-    # π0 (PaliGemma) necesita un transformers moderno. openvla fija 4.40.1, que es
-    # demasiado viejo (no registra "paligemma" en CONFIG_MAPPING de transformers).
-    # El tope <4.52 evita el mismatch de pesos de PI0 (lerobot#1406); 4.51.3 es la
-    # versión reportada como buena. Como choca con el pin de openvla, ambos extras
-    # se declaran en conflicto en [tool.uv]: se instala uno U otro, no los dos.
-    "transformers>=4.48,<4.52",
+    # π0 de LeRobot NO funciona con un transformers de PyPI: su chequeo interno de
+    # versión (modeling_pi0.py) exige el transformers PARCHEADO de la rama de git
+    # fix/lerobot_openpi. El wheel de PyPI de lerobot 0.4.4 no expone el extra `pi`
+    # que lo declara, así que replicamos acá sus dos dependencias (el transformers
+    # de git y scipy). Ese transformers choca con el pin de openvla (==4.40.1), así
+    # que openvla y pi0 se declaran como extras en conflicto en [tool.uv].
+    "transformers @ git+https://github.com/huggingface/transformers.git@fix/lerobot_openpi",
+    "scipy>=1.10.1,<1.15",
 ]
 
 [build-system]
@@ -37,6 +39,11 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/vla_learner"]
+
+[tool.hatch.metadata]
+# Permite dependencias por referencia directa: el transformers parcheado de git
+# del extra `pi0` (ver [project.optional-dependencies]).
+allow-direct-references = true
 
 # openvla (transformers==4.40.1) y pi0 (transformers>=4.48,<4.52) piden versiones
 # incompatibles de transformers: no pueden convivir en el mismo entorno. Se
