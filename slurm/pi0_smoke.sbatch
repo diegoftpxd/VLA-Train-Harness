@@ -36,15 +36,19 @@
 # con espacio si tu $HOME es chico. Ajustá partición, cuenta, GPU, memoria y
 # tiempo a tu sitio.
 
-#SBATCH --job-name=vla-pi0-smoke
-#SBATCH --partition=gpu              # <-- ajustá al nombre de tu partición GPU
-##SBATCH --account=tu_cuenta         # <-- descomentá y ajustá si tu cluster lo exige
-#SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=4
-#SBATCH --mem=32G
-#SBATCH --time=00:45:00              # incluye la descarga de pesos la primera vez
-#SBATCH --output=slurm/logs/%x-%j.out
-#SBATCH --error=slurm/logs/%x-%j.err
+#SBATCH --job-name=pi0_smoke
+#SBATCH --mail-type=END,FAIL
+#SBATCH --comment="Prueba de entrenamiento supervisado"
+#SBATCH --mail-user=diego.toledo@uc.cl
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=20gb
+#SBATCH --partition=ialab-low-unlimit
+#SBATCH --gres=gpu:2080_ti:1
+#SBATCH --qos=debug
+#SBATCH --output=slurm/logs/%x.log
+#SBATCH --time=1:00:00
+#SBATCH --nodelist=scylla
 
 # Slurm copia este script a un spool temporal, así que "$0" NO apunta al repo.
 # common.sh vive en <repo>/slurm; se localiza vía REPO_ROOT o el directorio desde
