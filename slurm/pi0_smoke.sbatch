@@ -25,16 +25,20 @@
 #     MODEL=lerobot/pi0_base   # id de HF o ruta local a un checkpoint de LeRobot
 #     FREEZE=action            # substring de los módulos a dejar entrenables
 #     TRAIN_STEPS=5            # cuántos pasos de BC correr
-#     BATCH_SIZE=2
+#     BATCH_SIZE=1             # subilo si te sobra VRAM (ver nota de memoria abajo)
 # Ejemplo:
 #     TRAIN_STEPS=10 FREEZE=action sbatch slurm/pi0_smoke.sbatch
 #
-# OJO: π0 carga ~7 GB en bf16 (PaliGemma-3B + action expert); NO cabe en la RTX
-# 2050 de desarrollo. Con solo el action expert entrenable la memoria de
-# gradientes/optimizador es chica, así que una GPU de >=16 GB alcanza. La primera
-# corrida DESCARGA los pesos de Hugging Face (~7 GB): exportá HF_HOME a un disco
-# con espacio si tu $HOME es chico. Ajustá partición, cuenta, GPU, memoria y
-# tiempo a tu sitio.
+# OJO (MEMORIA): π0 carga ~7-8 GB en bf16 (PaliGemma-3B + action expert) SOLO en
+# pesos; esos pesos tienen que estar en VRAM para el forward aunque todo esté
+# congelado (freeze baja el estado de gradientes/optimizador, NO el backbone). En
+# una 2080 Ti de 11 GB entra MUY al borde: por eso el default es BATCH_SIZE=1 y se
+# exporta PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True (abajo) para evitar que
+# la fragmentación tire un OutOfMemory por unos pocos MiB. Si igual no entra, usá
+# una GPU de >=24 GB (3090/4090/A5000/A100). NO cabe en la RTX 2050 de desarrollo.
+# La primera corrida DESCARGA los pesos de Hugging Face (~7 GB): exportá HF_HOME a
+# un disco con espacio si tu $HOME es chico. Ajustá partición, cuenta, GPU, memoria
+# y tiempo a tu sitio.
 
 #SBATCH --job-name=pi0_smoke
 #SBATCH --mail-type=END,FAIL
@@ -70,7 +74,12 @@ mkdir -p slurm/logs
 MODEL="${MODEL:-lerobot/pi0_base}"
 FREEZE="${FREEZE:-action}"
 TRAIN_STEPS="${TRAIN_STEPS:-5}"
-BATCH_SIZE="${BATCH_SIZE:-2}"
+BATCH_SIZE="${BATCH_SIZE:-1}"
+
+# expandable_segments evita que la fragmentación del allocator de PyTorch tire un
+# CUDA OutOfMemory por unos pocos MiB cuando el modelo llena casi toda la VRAM
+# (caso típico de π0 en una 2080 Ti de 11 GB). Respetá el valor si ya viene seteado.
+export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
 
 echo ">> π0 smoke: model=${MODEL} freeze=${FREEZE} train_steps=${TRAIN_STEPS} batch=${BATCH_SIZE}"
 
