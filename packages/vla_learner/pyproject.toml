@@ -23,6 +23,12 @@ openvla = [
 ]
 pi0 = [
     "lerobot>=0.4.4",
+    # π0 (PaliGemma) necesita un transformers moderno. openvla fija 4.40.1, que es
+    # demasiado viejo (no registra "paligemma" en CONFIG_MAPPING de transformers).
+    # El tope <4.52 evita el mismatch de pesos de PI0 (lerobot#1406); 4.51.3 es la
+    # versión reportada como buena. Como choca con el pin de openvla, ambos extras
+    # se declaran en conflicto en [tool.uv]: se instala uno U otro, no los dos.
+    "transformers>=4.48,<4.52",
 ]
 
 [build-system]
@@ -31,6 +37,15 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/vla_learner"]
+
+# openvla (transformers==4.40.1) y pi0 (transformers>=4.48,<4.52) piden versiones
+# incompatibles de transformers: no pueden convivir en el mismo entorno. Se
+# declaran como extras en conflicto para que uv resuelva cada uno por separado
+# (instalás uno u otro con `uv sync --extra openvla` o `--extra pi0`).
+[tool.uv]
+conflicts = [
+    [{ extra = "openvla" }, { extra = "pi0" }],
+]
 
 [tool.uv.sources]
 vla-common = { workspace = true }
