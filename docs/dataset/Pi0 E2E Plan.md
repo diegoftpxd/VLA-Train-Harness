@@ -86,23 +86,33 @@ Mapeo al formato que π0 necesita:
 ## Plan de acción
 
 Cada paso cierra con `uv run pytest -m fast`, `ruff` y `pyright` en verde cuando toque
-código, y un commit en la rama `Dataset`.
+código, y un commit en la rama `Dataset`. **Estado: pasos 1–4 implementados** (los
+entregables existen y la suite `fast` los cubre); solo falta correr la prueba en el
+cluster (paso 5).
 
-1. **Script de preparación (offline, una vez).** `scripts/prepare_pi0_pusht.py`:
+1. ✅ **Script de preparación (offline, una vez).** `scripts/prepare_pi0_pusht.py`:
    - carga pusht con `from lerobot.datasets.lerobot_dataset import LeRobotDataset`
-     (**path correcto de 0.4.4**, no el del adaptador con bug);
+     (**path correcto de 0.4.4**, no el del adaptador con bug), con respaldo al layout
+     viejo `lerobot.common.datasets...`;
    - recorre cada episodio y lo corta en ventanas **de 50 pasos exactos** (descarta la
      cola < 50, para que todas las chunks midan 50 — restricción 3);
    - escribe cada ventana como un episodio en formato `local`:
      `data/pi0_pusht/<idx>/data.npz` con `observation.images.base_0_rgb` `(50,C,H,W)`,
      `proprio` `(50,2)`, `actions` `(50,2)`; y `meta.json` con `instruction`;
-   - se corre con `uv run --extra lerobot python -I scripts/prepare_pi0_pusht.py`.
+   - se corre con `uv run --extra pi0 python -I scripts/prepare_pi0_pusht.py`.
+     **Desviación respecto al plan original:** se usa `--extra pi0`, no `--extra lerobot`.
+     El extra `lerobot` vive en `vla-core` y **no está expuesto** a nivel de workspace;
+     el root sí expone `pi0` (`vla-learner[pi0]`), que fija `lerobot>=0.4.4`, justo la
+     versión cuyo path de import usa el script. `data/` se agregó a `.gitignore` (dato
+     derivado, no se versiona).
    - **Dato no confiable:** el corpus descargado va a su propio directorio y solo se
-     lee por ruta (regla de `Dataset Design.md`).
-   - Validación en `fast`: un test que, sobre un fixture diminuto ya en el repo,
-     chequee el troceo a 50 y las claves/forma de salida (sin descargar nada).
+     lee por ruta (regla de `Dataset Design.md`); el script corre con `python -I`.
+   - Validación en `fast`: `packages/vla_core/tests/test_prepare_pi0_pusht.py` ejercita
+     los helpers puros del script (`ventanas`, `preparar_desde_episodios`) sobre arrays
+     sintéticos, chequea el troceo a 50 y lee la salida con `LocalDataset`, sin descargar
+     nada. `lerobot` se importa solo dentro de `main`, así que el test no lo necesita.
 
-2. **Config de Core.** `configs/core/pi0_pusht.yaml`:
+2. ✅ **Config de Core.** `configs/core/pi0_pusht.yaml`:
    ```yaml
    server: { address: "tcp://127.0.0.1:5555" }
    backend: { type: fake }          # Environment/WM/RM no se tocan en supervisado
@@ -112,9 +122,13 @@ código, y un commit en la rama `Dataset`.
      cameras: { observation.images.base_0_rgb: observation.images.base_0_rgb }
      demo_chunk_size: 50            # = n_action_steps de π0 (restricción 3)
    ```
-   Validarla en `test_configs.py` (`fast`).
+   Validada en `test_prepare_pi0_pusht.py` (`fast`), **no** en `test_configs.py`: ese
+   suite construye y atiende cada config, y `path: data/pi0_pusht` no está en el repo
+   (es el corpus convertido). En su lugar el test chequea los invariantes del YAML y
+   sirve el bloque `dataset` por un Core real sobre un fixture sintético (mismo troceo
+   de 50, cámara `base_0_rgb`), round-trip incluido por el `CoreClient`.
 
-3. **Config de Learner.** `configs/pi0_pusht_bc.yaml` (clon de `pi0_bc.yaml` corregido):
+3. ✅ **Config de Learner.** `configs/pi0_pusht_bc.yaml` (clon de `pi0_bc.yaml` corregido):
    - `cameras: [observation.images.base_0_rgb]` — **clave:** debe coincidir con la
      cámara que sirve el dataset, no `primary` (restricción 1). El `_build_pi0` pasa
      `cameras` del YAML tal cual al procesador.
@@ -127,7 +141,7 @@ código, y un commit en la rama `Dataset`.
    > Nota: `configs/pi0_bc.yaml` quedó con `cameras: [primary]` y "7 dims", que **no**
    > es compatible con `pi0_base` (3 cámaras, dims 32). Corregir o reemplazar por este.
 
-4. **Orquestación de los dos procesos.** `slurm/pi0_bc.sbatch` (clon de
+4. ✅ **Orquestación de los dos procesos.** `slurm/pi0_bc.sbatch` (clon de
    `train_openvla_bc.sbatch`):
    - `CORE_CONFIG=configs/core/pi0_pusht.yaml`, `LEARNER_CONFIG=configs/pi0_pusht_bc.yaml`;
    - Core en background con `uv run vla-core ...` (**sin extra**: base liviana);

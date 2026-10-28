@@ -1,0 +1,42 @@
+# Learner π0 (BC) para la prueba E2E de dos procesos sobre pusht (formato `local`).
+# Ver docs/dataset/Pi0 E2E Plan.md. Clon corregido de configs/pi0_bc.yaml: ajusta
+# la cámara y el largo de chunk a lo que sirve configs/core/pi0_pusht.yaml.
+#
+#   uv run vla-core   --config configs/core/pi0_pusht.yaml   # terminal 1 (CPU, sin extra)
+#   uv run --extra pi0 vla-learner --config configs/pi0_pusht_bc.yaml  # terminal 2 (GPU)
+#
+# Carga los pesos reales de π0 (~7 GB bf16): NO cabe en la RTX 2050; va al cluster.
+seed: 0
+
+device: cuda
+
+# Core real por ZeroMQ (mismo puerto que el server del YAML de Core).
+core: {type: zmq, address: "tcp://localhost:5555", timeout_s: 60}
+
+policy:
+  type: pi0
+  pretrained: lerobot/pi0_base
+  # CLAVE: debe coincidir EXACTO con la cámara que sirve el dataset (restricción 1
+  # del plan). pusht trae una sola cámara, mapeada a observation.images.base_0_rgb;
+  # las otras dos que espera pi0_base las rellena y enmascara el modelo.
+  cameras: [observation.images.base_0_rgb]
+  image_size: 224
+  torch_dtype: bfloat16
+  # Fine-tuning parcial: solo el action expert; PaliGemma congelado (menos memoria).
+  freeze: {trainable: [action]}
+
+# π0 es flow matching (sin log-prob): sirve para BC, no para PPO/GRPO.
+algorithm: {type: bc}
+
+# Demos supervisadas desde el Core. batch_size chico por memoria (pi0 es grande).
+data: {type: supervised, batch_size: 2}
+
+optimizer: {name: adamw, lr: 0.00005, grad_clip: 1.0, scheduler: null, precision: bf16}
+
+checkpoint: {directory: checkpoints/pi0_pusht_bc, every: 200, keep_last: 2}
+
+# El embodiment debe tener la cámara que el procesador de π0 requiere.
+available_cameras: [observation.images.base_0_rgb]
+
+# Prueba de humo del cableado de dos procesos: pocos pasos, no se busca converger.
+num_iterations: 10

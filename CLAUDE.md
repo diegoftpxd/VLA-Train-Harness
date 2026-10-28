@@ -41,8 +41,8 @@ Si al implementar necesitas desviarte del diseño (una firma, un tipo, una clase
 ## Hardware: Core es CPU; cuidado con los pesos
 
 - **Core no tiene GPU ni modelo.** Todo su código corre en CPU y solo enruta mensajes y arrays de numpy. `vla_core` **no depende de `torch`** (igual que `vla_common`).
-- Los componentes con GPU (WorldModel, Reward Model) son procesos aparte y están fuera de alcance: en los tests se reemplazan por **fakes CPU** livianos, deterministas y con arrays pequeños.
-- La máquina de desarrollo tiene una **RTX 2050 con 4 GB de VRAM**. **Nunca descargues ni cargues pesos de modelos reales** (OpenVLA 7B, PaliGemma 3B, π0, world models, VLM jueces). No caben y no hacen falta para construir Core.
+- Los componentes con GPU (WorldModel, Reward Model) son procesos aparte.
+- La máquina de desarrollo (si estás en windows) tiene una **RTX 2050 con 4 GB de VRAM**. **Nunca descargues ni cargues pesos de modelos reales** (OpenVLA 7B, PaliGemma 3B, π0, world models, VLM jueces). No caben y no hacen falta para construir funcionalidades.
 - Un test no debe usar más de ~2 GB de VRAM y el dispositivo por defecto es **CPU**. La GPU solo en tests marcados `gpu`.
 
 ## Reproducibilidad con uv
