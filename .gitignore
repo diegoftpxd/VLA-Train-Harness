@@ -15,3 +15,6 @@ dist/
 checkpoints/
 wandb/
 runs/
+
+# Pesos descargados de Hugging Face (ver slurm/common.sh: HF_HOME)
+.hf_cache/

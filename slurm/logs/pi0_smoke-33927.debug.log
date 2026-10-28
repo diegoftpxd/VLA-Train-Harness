@@ -1,0 +1,9 @@
+   Building vla-learner @ file:///mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness/packages/vla_learner
+Downloading tokenizers (3.0MiB)
+Downloading transformers (9.9MiB)
+ Downloaded tokenizers
+      Built vla-learner @ file:///mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness/packages/vla_learner
+ Downloaded transformers
+Uninstalled 1 package in 428ms
+Installed 3 packages in 2m 03s
+Cargando lerobot/pi0_base en cuda (torch.bfloat16)...

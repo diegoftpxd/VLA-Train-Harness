@@ -1,0 +1,38 @@
+Cargando lerobot/pi0_base en cuda (torch.bfloat16)...
+The PI0 model is a direct port of the OpenPI implementation. 
+This implementation follows the original OpenPI structure for compatibility. 
+Original implementation: https://github.com/Physical-Intelligence/openpi
+Traceback (most recent call last):
+  File "/mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness/examples/pi0_smoke.py", line 96, in <module>
+    main()
+  File "/mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness/examples/pi0_smoke.py", line 58, in main
+    policy = Pi0Policy.from_pretrained(args.model, torch_dtype=dtype)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness/packages/vla_learner/src/vla_learner/policy/adapters/pi0.py", line 282, in from_pretrained
+    model = _LeRobotPi0Model.from_pretrained(directory, torch_dtype=torch_dtype)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness/packages/vla_learner/src/vla_learner/policy/adapters/pi0.py", line 330, in from_pretrained
+    lerobot_policy = PI0Policy.from_pretrained(str(source))
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness/.venv/lib/python3.12/site-packages/lerobot/policies/pi0/modeling_pi0.py", line 998, in from_pretrained
+    model = cls(config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness/.venv/lib/python3.12/site-packages/lerobot/policies/pi0/modeling_pi0.py", line 953, in __init__
+    self.model.to(config.device)
+  File "/mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness/.venv/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1343, in to
+    return self._apply(convert)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness/.venv/lib/python3.12/site-packages/torch/nn/modules/module.py", line 903, in _apply
+    module._apply(fn)
+  File "/mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness/.venv/lib/python3.12/site-packages/torch/nn/modules/module.py", line 903, in _apply
+    module._apply(fn)
+  File "/mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness/.venv/lib/python3.12/site-packages/torch/nn/modules/module.py", line 903, in _apply
+    module._apply(fn)
+  [Previous line repeated 5 more times]
+  File "/mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness/.venv/lib/python3.12/site-packages/torch/nn/modules/module.py", line 930, in _apply
+    param_applied = fn(param)
+                    ^^^^^^^^^
+  File "/mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness/.venv/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1329, in convert
+    return t.to(
+           ^^^^^
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 128.00 MiB. GPU 0 has a total capacity of 10.57 GiB of which 13.06 MiB is free. Including non-PyTorch memory, this process has 10.55 GiB memory in use. Of the allocated memory 10.24 GiB is allocated by PyTorch, and 157.58 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)

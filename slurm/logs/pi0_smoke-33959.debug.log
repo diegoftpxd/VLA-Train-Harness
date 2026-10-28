@@ -1,0 +1,24 @@
+Cargando lerobot/pi0_base en cuda (torch.bfloat16)...
+The PI0 model is a direct port of the OpenPI implementation. 
+This implementation follows the original OpenPI structure for compatibility. 
+Original implementation: https://github.com/Physical-Intelligence/openpi
+Loading model from: lerobot/pi0_base
+✓ Loaded state dict from model.safetensors
+WARNING:root:Vision embedding key might need handling: paligemma_with_expert.paligemma.model.vision_tower.vision_model.embeddings.patch_embedding.bias
+WARNING:root:Vision embedding key might need handling: paligemma_with_expert.paligemma.model.vision_tower.vision_model.embeddings.patch_embedding.weight
+Remapped 777 state dict keys
+Warning: Could not remap state dict keys: Error(s) in loading state_dict for PI0Policy:
+	Missing key(s) in state_dict: "model.paligemma_with_expert.paligemma.model.language_model.embed_tokens.weight". 
+Listo. action_dim=32, chunk_size=50, capacidades={∅}
+Traceback (most recent call last):
+  File "/mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness/examples/pi0_smoke.py", line 96, in <module>
+    main()
+  File "/mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness/examples/pi0_smoke.py", line 70, in main
+    model_input = policy.processor(obs)
+                  ^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness/packages/vla_learner/src/vla_learner/policy/adapters/pi0.py", line 125, in __call__
+    [self._image(obs, camera) for obs in observations]
+     ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness/packages/vla_learner/src/vla_learner/policy/adapters/pi0.py", line 88, in _image
+    raise ValueError(
+ValueError: Falta la cámara requerida 'observation.images.base_0_rgb' en la observación (disponibles: ['primary']).

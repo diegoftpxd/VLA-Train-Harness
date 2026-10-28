@@ -26,6 +26,14 @@ if [[ ! -f "${REPO_ROOT}/pyproject.toml" ]]; then
 fi
 cd "${REPO_ROOT}"
 
+# --- Cache de modelos (Hugging Face) -----------------------------------------
+# Los pesos (p. ej. π0 ~10 GB) se guardan DENTRO del repo, en `.hf_cache/`
+# (gitignoreado), en vez del `~/.cache/huggingface` por defecto. Así quedan en el
+# mismo disco grande del repo y no los borra una limpieza del home. Se respeta un
+# HF_HOME ya exportado; si no, se usa el del repo. HF crea `$HF_HOME/hub` solo.
+export HF_HOME="${HF_HOME:-${REPO_ROOT}/.hf_cache}"
+mkdir -p "${HF_HOME}"
+
 # --- uv en el PATH -----------------------------------------------------------
 # Muchos clusters exponen uv como módulo; si no, se asume que ya está en el
 # PATH (p. ej. instalado en ~/.local/bin). Ajustá el nombre del módulo a tu

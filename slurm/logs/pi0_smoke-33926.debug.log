@@ -1,0 +1,29 @@
+Cargando lerobot/pi0_base en cuda (torch.bfloat16)...
+The PI0 model is a direct port of the OpenPI implementation. 
+This implementation follows the original OpenPI structure for compatibility. 
+Original implementation: https://github.com/Physical-Intelligence/openpi
+Traceback (most recent call last):
+  File "/mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness/examples/pi0_smoke.py", line 96, in <module>
+    main()
+  File "/mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness/examples/pi0_smoke.py", line 58, in main
+    policy = Pi0Policy.from_pretrained(args.model, torch_dtype=dtype)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness/packages/vla_learner/src/vla_learner/policy/adapters/pi0.py", line 282, in from_pretrained
+    model = _LeRobotPi0Model.from_pretrained(directory, torch_dtype=torch_dtype)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness/packages/vla_learner/src/vla_learner/policy/adapters/pi0.py", line 330, in from_pretrained
+    lerobot_policy = PI0Policy.from_pretrained(str(source))
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness/.venv/lib/python3.12/site-packages/lerobot/policies/pi0/modeling_pi0.py", line 998, in from_pretrained
+    model = cls(config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness/.venv/lib/python3.12/site-packages/lerobot/policies/pi0/modeling_pi0.py", line 947, in __init__
+    self.model = PI0Pytorch(config, rtc_processor=self.rtc_processor)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness/.venv/lib/python3.12/site-packages/lerobot/policies/pi0/modeling_pi0.py", line 552, in __init__
+    self.paligemma_with_expert = PaliGemmaWithExpertModel(
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness/.venv/lib/python3.12/site-packages/lerobot/policies/pi0/modeling_pi0.py", line 351, in __init__
+    vlm_config_hf = CONFIG_MAPPING["paligemma"]()
+                    ~~~~~~~~~~~~~~^^^^^^^^^^^^^
+TypeError: 'NoneType' object is not subscriptable

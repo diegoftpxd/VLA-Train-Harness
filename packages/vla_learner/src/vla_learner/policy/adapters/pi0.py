@@ -41,7 +41,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import torch
@@ -317,6 +317,9 @@ class _LeRobotPi0Model(nn.Module):
     def from_pretrained(cls, source: str | Path, *, torch_dtype: Any = None) -> _LeRobotPi0Model:
         try:
             # Layout de lerobot >=0.4.x (el fijado en el grupo opcional ``pi0``).
+            from lerobot.configs.policies import (  # pyright: ignore[reportMissingImports]
+                PreTrainedConfig,
+            )
             from lerobot.policies.pi0.configuration_pi0 import (  # pyright: ignore[reportMissingImports]
                 PI0Config,
             )
@@ -324,6 +327,9 @@ class _LeRobotPi0Model(nn.Module):
                 PI0Policy,
             )
         except ImportError:  # pragma: no cover - layout antiguo (lerobot.common.*)
+            from lerobot.common.configs.policies import (  # pyright: ignore[reportMissingImports]
+                PreTrainedConfig,
+            )
             from lerobot.common.policies.pi0.configuration_pi0 import (  # pyright: ignore[reportMissingImports]
                 PI0Config,
             )
@@ -342,7 +348,16 @@ class _LeRobotPi0Model(nn.Module):
             precision = {torch.bfloat16: "bfloat16", torch.float32: "float32"}.get(torch_dtype)
             if precision is None:
                 raise ValueError(f"π0 solo soporta bfloat16 o float32, no {torch_dtype}.")
-            config = PI0Config.from_pretrained(str(source))
+            # Se carga por la clase BASE del registro (``PreTrainedConfig``), no por
+            # la subclase ``PI0Config``: ``PreTrainedConfig.from_pretrained`` consume
+            # el discriminador ``"type": "pi0"`` del ``config.json`` para elegir la
+            # subclase y devuelve igual un ``PI0Config``. Llamar ``from_pretrained``
+            # sobre la subclase pasa por un atajo de LeRobot (``draccus.parse(cls)``)
+            # que con draccus 0.8 no consume ese ``type`` y revienta con
+            # ``DecodingError: The fields 'type' are not valid for PI0Config``.
+            # ``PreTrainedConfig.from_pretrained`` devuelve en runtime un ``PI0Config``
+            # (lo elige por el ``type``); el ``cast`` es solo para el tipado de ``dtype``.
+            config = cast(PI0Config, PreTrainedConfig.from_pretrained(str(source)))
             config.dtype = precision
 
         lerobot_policy = PI0Policy.from_pretrained(str(source), config=config)

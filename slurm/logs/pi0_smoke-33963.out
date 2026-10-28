@@ -1,0 +1,59 @@
+== Entorno Slurm ==
+  job          : 33963
+  nodo(s)      : llaima
+  repo         : /mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness
+  uv           : /home/diegoftpxd/.local/bin/uv (uv 0.13.0 (x86_64-unknown-linux-gnu))
+====================
+>> π0 smoke: model=lerobot/pi0_base freeze=action train_steps=5 batch=1
+>> Volcando salida completa a slurm/logs/pi0_smoke-33963.debug.log
+Cargando lerobot/pi0_base en cuda (torch.bfloat16)...
+Traceback (most recent call last):
+  File "/mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness/examples/pi0_smoke.py", line 108, in <module>
+    main()
+  File "/mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness/examples/pi0_smoke.py", line 69, in main
+    policy = Pi0Policy.from_pretrained(args.model, torch_dtype=dtype)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness/packages/vla_learner/src/vla_learner/policy/adapters/pi0.py", line 280, in from_pretrained
+    model = _LeRobotPi0Model.from_pretrained(directory, torch_dtype=torch_dtype)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness/packages/vla_learner/src/vla_learner/policy/adapters/pi0.py", line 345, in from_pretrained
+    config = PI0Config.from_pretrained(str(source))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness/.venv/lib/python3.12/site-packages/lerobot/configs/policies.py", line 211, in from_pretrained
+    orig_config = draccus.parse(cls, config_file, args=[])
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness/.venv/lib/python3.12/site-packages/draccus/argparsing.py", line 211, in parse
+    return parser.parse_args(args)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness/.venv/lib/python3.12/site-packages/draccus/argparsing.py", line 102, in parse_args
+    args, _ = self.parse_known_args(args, namespace, is_parse_args=True)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness/.venv/lib/python3.12/site-packages/draccus/argparsing.py", line 136, in parse_known_args
+    parsed_t = self._postprocessing(parsed_args)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness/.venv/lib/python3.12/site-packages/draccus/argparsing.py", line 180, in _postprocessing
+    cfg = decoding.decode(self.config_class, deflat_d)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness/.venv/lib/python3.12/site-packages/draccus/parsers/registry_utils.py", line 78, in wrapper
+    return base_func(*args, **kw)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness/.venv/lib/python3.12/site-packages/draccus/parsers/decoding.py", line 48, in decode
+    return get_decoding_fn(cls)(raw_value, ())  # type: ignore
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness/.venv/lib/python3.12/site-packages/draccus/parsers/decoding.py", line 175, in decode_choice_class
+    return decode_dataclass(cls, raw_value)  # type: ignore
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt-homes/wapol/asoto/diegoftpxd/VLA-Train-Harness/.venv/lib/python3.12/site-packages/draccus/parsers/decoding.py", line 149, in decode_dataclass
+    raise DecodingError(path, f"The fields {formatted_keys} are not valid for {stringify_type(cls)}")
+draccus.utils.DecodingError: The fields `type` are not valid for PI0Config
+
+------------------------------------------------------------------------
+[Slurm] Este trabajo (#33963) terminó SIN reporte de rendimiento por correo.
+Puedes recibir un correo con el uso de CPU, RAM y GPU de tus trabajos
+(y sugerencias para que esperen menos en cola) agregando esta línea
+en tu script de sbatch, junto a las líneas #SBATCH:
+
+    #SENDJOBREPORT
+
+Dudas: slurmjobs@cenia.cl
+------------------------------------------------------------------------

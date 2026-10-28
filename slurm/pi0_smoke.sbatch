@@ -47,13 +47,13 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=20gb
-#SBATCH --partition=ialab-low-unlimit
-#SBATCH --gres=gpu:2080_ti:1
+#SBATCH --partition=ialab-high-unlimit
+#SBATCH --gres=gpu:1
 #SBATCH --qos=debug
 #SBATCH --output=slurm/logs/%x-%j.out
 #SBATCH --error=slurm/logs/%x-%j.err
 #SBATCH --time=1:00:00
-#SBATCH --nodelist=scylla
+#SBATCH --nodelist=llaima
 
 # Slurm copia este script a un spool temporal, así que "$0" NO apunta al repo.
 # common.sh vive en <repo>/slurm; se localiza vía REPO_ROOT o el directorio desde
