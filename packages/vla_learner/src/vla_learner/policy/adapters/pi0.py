@@ -26,13 +26,24 @@ tests de esta máquina inyectan un modelo falso diminuto (sin ``lerobot``, sin
 pesos) para ejercitar la lógica del adaptador en CPU; la verificación con pesos
 reales va marcada ``heavy`` y se corre en el cluster (ver ``examples/pi0_smoke.py``).
 
+**Normalización (dentro de la política).** En LeRobot 0.4.4 el ``PI0Policy`` no
+normaliza: eso lo hace su pipeline de procesadores (``make_pi0_pre_post_processors``),
+que este adaptador no usa. Por eso la normalización la hace el adaptador, como pide
+``Learner Design.md`` ("Normalización de acciones"): las acciones con un
+``ActionNormalizer`` propio (normaliza antes de la loss y desnormaliza en ``act``) y
+la propiocepción en :class:`Pi0Processor`. Mismo modo que LeRobot para π0:
+``mean_std`` en estado y acción. ``pi0_base`` no trae estadísticas del dataset, así
+que salen del config (``normalizer.stats``: ``fit`` o una ruta; ver el builder).
+Ambos normalizadores son submódulos, así que sus buffers viajan en el ``state_dict``.
+
 **Contrato del modelo envuelto.** ``Pi0Policy`` delega el flow matching en
 ``self.model`` (LeRobot en producción, un doble en los tests), que debe exponer:
 
 - ``compute_loss(cond, actions) -> Tensor``: loss de flow matching (escalar);
-  ``actions`` ``[B, H, D]`` en **unidades reales** (el modelo normaliza adentro).
-- ``predict_chunk(cond) -> Tensor``: chunk de acciones ``[B, H, D]`` en unidades
-  reales.
+  ``actions`` ``[B, H, D]`` **normalizadas** (el adaptador ya las normalizó).
+- ``predict_chunk(cond) -> Tensor``: chunk ``[B, H, D']`` normalizado, con
+  ``D' >= D`` (π0 devuelve las ``max_action_dim`` dims padeadas; el adaptador se
+  queda con las ``D`` reales y desnormaliza).
 
 donde ``cond`` es el diccionario de tensores que arma :class:`Pi0Processor`.
 """
@@ -49,7 +60,39 @@ from torch import Tensor, nn
 
 from vla_common import Observation
 from vla_learner.policy.interfaces import Capability, ObservationProcessor, VLAPolicy
+from vla_learner.policy.normalizer import ActionNormalizer
 from vla_learner.types import ActionEvaluation, LossOutput, ModelInput, PolicyOutput
+
+# Tokenizer que usa π0 en LeRobot 0.4.4 (``processor_pi0.py``). Es un repo de HF
+# con acceso restringido: hay que aceptar la licencia y autenticarse (o pasar una
+# ruta local con el tokenizer ya descargado).
+PALIGEMMA_TOKENIZER = "google/paligemma-3b-pt-224"
+
+# Archivos de estadísticas que escribe ``save_pretrained`` (y que el builder lee
+# con ``normalizer.stats: <directorio>``).
+ACTION_STATS_FILE = "action_stats.pt"
+STATE_STATS_FILE = "state_stats.pt"
+
+
+def load_paligemma_tokenizer(source: str = PALIGEMMA_TOKENIZER) -> Any:
+    """Carga el tokenizer de PaliGemma (id de HF o ruta local).
+
+    ``transformers`` se importa acá (viene con el grupo opcional ``pi0``). Si falla
+    —típicamente porque el repo es de acceso restringido y no hay sesión de HF—, se
+    relanza con qué hacer, en vez de caer al placeholder de los tests: sin el
+    tokenizer real, π0 entrenaría sin ver la instrucción.
+    """
+    from transformers import AutoTokenizer  # pyright: ignore[reportMissingImports]
+
+    try:
+        return AutoTokenizer.from_pretrained(source)
+    except OSError as error:
+        raise RuntimeError(
+            f"No se pudo cargar el tokenizer de PaliGemma {source!r}. Es un repo de HF con "
+            "acceso restringido: aceptá la licencia en https://huggingface.co/"
+            f"{PALIGEMMA_TOKENIZER} y autenticate (`hf auth login` o HF_TOKEN), o pasá "
+            "en `policy.tokenizer` una ruta local con el tokenizer descargado."
+        ) from error
 
 
 class Pi0Processor(ObservationProcessor):
@@ -58,12 +101,16 @@ class Pi0Processor(ObservationProcessor):
     Produce tensores:
 
     - ``image.<cam>`` ``[B, C, H, W]`` float en ``[0, 1]`` por cada cámara.
-    - ``state`` ``[B, P]`` (propiocepción).
+    - ``state`` ``[B, P]`` (propiocepción), **normalizada** con ``state_normalizer``
+      si se da (``Learner Design.md``: la propiocepción se normaliza en el procesador).
     - ``lang_tokens`` ``[B, L]`` y ``lang_masks`` ``[B, L]`` si hay tokenizador
       (PaliGemma, inyectado en el modelo real); si no (tests), un placeholder.
 
-    El tokenizador se inyecta —en producción sale del checkpoint de LeRobot— para
-    no acoplar el procesador a ``lerobot``.
+    El tokenizador y el normalizador se inyectan —en producción los arma
+    :meth:`Pi0Policy.from_pretrained`— para no acoplar el procesador a ``lerobot``.
+    La tokenización replica el pipeline de LeRobot 0.4.4 (``processor_pi0.py``):
+    la instrucción termina en ``"\\n"`` (``Pi0NewLineProcessor``, lo exige
+    PaliGemma) y se rellena a la derecha hasta ``max_lang_len``.
     """
 
     def __init__(
@@ -73,11 +120,13 @@ class Pi0Processor(ObservationProcessor):
         tokenizer: Any | None = None,
         image_size: int | None = None,
         max_lang_len: int = 48,
+        state_normalizer: ActionNormalizer | None = None,
     ) -> None:
         self._cameras = list(cameras)
         self._tokenizer = tokenizer
         self._image_size = image_size
         self._max_lang_len = max_lang_len
+        self.state_normalizer = state_normalizer
 
     @property
     def required_cameras(self) -> list[str]:
@@ -110,10 +159,11 @@ class Pi0Processor(ObservationProcessor):
             unos = torch.ones(len(instructions), 1, dtype=torch.long)
             return unos, unos.bool()
         encoded = self._tokenizer(
-            instructions,
+            [texto if texto.endswith("\n") else f"{texto}\n" for texto in instructions],
             padding="max_length",
             max_length=self._max_lang_len,
             truncation=True,
+            padding_side="right",
             return_tensors="pt",
         )
         return encoded["input_ids"], encoded["attention_mask"].bool()
@@ -124,9 +174,14 @@ class Pi0Processor(ObservationProcessor):
             tensors[f"image.{camera}"] = torch.stack(
                 [self._image(obs, camera) for obs in observations]
             )
-        tensors["state"] = torch.stack(
+        state = torch.stack(
             [torch.as_tensor(obs.proprio, dtype=torch.float32) for obs in observations]
         )
+        if self.state_normalizer is not None:
+            state = self.state_normalizer.normalize(
+                state, self.state_normalizer.default_embodiment()
+            )
+        tensors["state"] = state
         lang_tokens, lang_masks = self._language([obs.instruction for obs in observations])
         tensors["lang_tokens"] = lang_tokens
         tensors["lang_masks"] = lang_masks
@@ -142,6 +197,11 @@ class Pi0Policy(VLAPolicy):
     Se construye normalmente con :meth:`from_pretrained` (carga pesos reales desde
     Hugging Face vía LeRobot). El constructor recibe las piezas por inyección, para
     poder probarlo con un modelo falso diminuto sin descargar nada.
+
+    Sin ``action_normalizer`` las acciones pasan sin tocar (identidad): sirve para
+    los tests, pero π0 entrenaría en unidades crudas. Con uno, ``action_dim`` debe
+    coincidir con su dimensión. El normalizador de estado lo usa el procesador; la
+    política solo lo registra como submódulo para que se guarde con los pesos.
     """
 
     model: Any
@@ -153,12 +213,20 @@ class Pi0Policy(VLAPolicy):
         *,
         action_dim: int,
         chunk_size: int,
+        action_normalizer: ActionNormalizer | None = None,
     ) -> None:
         super().__init__()
         self.model = model
         self.processor = processor
         self._action_dim = int(action_dim)
         self._chunk_size = int(chunk_size)
+        if action_normalizer is not None and action_normalizer.dim() != self._action_dim:
+            raise ValueError(
+                f"action_dim={self._action_dim} no coincide con la dimensión del "
+                f"normalizador de acciones ({action_normalizer.dim()})."
+            )
+        self.action_normalizer = action_normalizer
+        self.state_normalizer = getattr(processor, "state_normalizer", None)
 
     # -- Propiedades de la interfaz -------------------------------------
 
@@ -212,13 +280,36 @@ class Pi0Policy(VLAPolicy):
         """
         return {nombre: tensor.to(self._device) for nombre, tensor in inputs.tensors.items()}
 
+    def _normalize(self, actions: Tensor) -> Tensor:
+        if self.action_normalizer is None:
+            return actions
+        return self.action_normalizer.normalize(
+            actions, self.action_normalizer.default_embodiment()
+        )
+
+    def _denormalize(self, actions: Tensor) -> Tensor:
+        if self.action_normalizer is None:
+            return actions
+        return self.action_normalizer.denormalize(
+            actions, self.action_normalizer.default_embodiment()
+        )
+
     # -- Interfaz VLAPolicy ---------------------------------------------
 
     def act(self, inputs: ModelInput, deterministic: bool = False) -> PolicyOutput:
         with torch.no_grad():
             cond = self._move_cond(inputs)
-            actions = self.model.predict_chunk(cond)
-            actions = actions.reshape(inputs.batch_size, self._chunk_size, self._action_dim)
+            salida = self.model.predict_chunk(cond)
+            if salida.shape[-1] < self._action_dim:
+                raise ValueError(
+                    f"El modelo predijo {salida.shape[-1]} dims de acción; se esperaban "
+                    f"al menos action_dim={self._action_dim}."
+                )
+            # π0 predice las dims padeadas a ``max_action_dim``: se queda con las reales.
+            actions = salida[..., : self._action_dim].reshape(
+                inputs.batch_size, self._chunk_size, self._action_dim
+            )
+            actions = self._denormalize(actions.float())
         # Flow matching: sin log-prob ni valor.
         return PolicyOutput(actions=actions, log_probs=None, values=None, extras={})
 
@@ -236,8 +327,9 @@ class Pi0Policy(VLAPolicy):
     def imitation_loss(self, inputs: ModelInput, actions: Tensor) -> LossOutput:
         cond = self._move_cond(inputs)
         # Se mueve solo al device; el dtype queda en float32 (ver ``_move_cond``): el
-        # flow matching de π0 mezcla estas acciones con ruido float32.
-        loss = self.model.compute_loss(cond, actions.to(self._device))
+        # flow matching de π0 mezcla estas acciones con ruido float32. Las acciones
+        # llegan en unidades reales y se normalizan acá, como en ``act``.
+        loss = self.model.compute_loss(cond, self._normalize(actions.to(self._device)))
         return LossOutput(loss=loss, metrics={"fm_mse": float(loss.detach())})
 
     # -- Persistencia ----------------------------------------------------
@@ -249,11 +341,19 @@ class Pi0Policy(VLAPolicy):
         guardar = getattr(self.model, "save_pretrained", None)
         if callable(guardar):
             guardar(directory)
+        # Estadísticas aparte de los pesos de LeRobot, para poder reusarlas con
+        # ``normalizer.stats: <este directorio>`` sin cargar el checkpoint entero.
+        if self.action_normalizer is not None:
+            self.action_normalizer.save_file(directory / ACTION_STATS_FILE)
+        if self.state_normalizer is not None:
+            self.state_normalizer.save_file(directory / STATE_STATS_FILE)
         meta = {
             "adapter": "pi0",
             "action_dim": self._action_dim,
             "chunk_size": self._chunk_size,
             "cameras": self.processor.required_cameras,
+            "action_normalizer": getattr(self.action_normalizer, "mode", None),
+            "state_normalizer": getattr(self.state_normalizer, "mode", None),
         }
         (directory / "pi0_adapter.json").write_text(json.dumps(meta, indent=2))
 
@@ -266,6 +366,9 @@ class Pi0Policy(VLAPolicy):
         image_size: int = 224,
         torch_dtype: Any = None,
         device_map: Any = None,
+        tokenizer: str = PALIGEMMA_TOKENIZER,
+        action_normalizer: ActionNormalizer | None = None,
+        state_normalizer: ActionNormalizer | None = None,
     ) -> Pi0Policy:
         """Carga el **π0 completo** desde Hugging Face vía LeRobot (grupo opcional ``pi0``).
 
@@ -273,21 +376,33 @@ class Pi0Policy(VLAPolicy):
         ``lerobot/pi0_base``) o una ruta local. **Cluster-only:** no cabe en la GPU
         de desarrollo y no se ejercita en los tests ``fast``.
 
+        ``tokenizer`` es el id de HF o la ruta local del tokenizer de PaliGemma.
+        ``action_normalizer``/``state_normalizer`` traen las estadísticas del dataset
+        (las arma el builder con ``normalizer.stats``); con ``action_normalizer``,
+        ``action_dim`` pasa a ser el del dataset (p. ej. 2 en pusht), no las
+        ``max_action_dim`` (32) padeadas de π0.
+
         El envoltorio :class:`_LeRobotPi0Model` apunta a la API de LeRobot de la
         versión fijada en el grupo ``pi0`` del ``pyproject``; si tu versión difiere,
         es el único punto a ajustar (igual que el ``trust_remote_code`` de OpenVLA).
         """
-        model = _LeRobotPi0Model.from_pretrained(directory, torch_dtype=torch_dtype)
+        model = _LeRobotPi0Model.from_pretrained(
+            directory, torch_dtype=torch_dtype, tokenizer=tokenizer
+        )
         processor = Pi0Processor(
             cameras or model.cameras,
             tokenizer=model.tokenizer,
             image_size=image_size,
+            max_lang_len=model.tokenizer_max_length,
+            state_normalizer=state_normalizer,
         )
+        action_dim = action_normalizer.dim() if action_normalizer is not None else model.action_dim
         return cls(
             model,
             processor,
-            action_dim=model.action_dim,
+            action_dim=action_dim,
             chunk_size=model.chunk_size,
+            action_normalizer=action_normalizer,
         )
 
 
@@ -302,19 +417,28 @@ class _LeRobotPi0Model(nn.Module):
     es el único lugar a tocar.
     """
 
-    def __init__(self, lerobot_policy: Any) -> None:
+    def __init__(self, lerobot_policy: Any, tokenizer: Any) -> None:
         super().__init__()
         self.lerobot = lerobot_policy
         config = lerobot_policy.config
         # Nombres habituales en la config de π0 de LeRobot; con respaldos razonables.
         self.action_dim = int(getattr(config, "max_action_dim", getattr(config, "action_dim", 7)))
         self.chunk_size = int(getattr(config, "n_action_steps", getattr(config, "chunk_size", 50)))
-        self.tokenizer = getattr(lerobot_policy, "language_tokenizer", None)
+        self.tokenizer_max_length = int(getattr(config, "tokenizer_max_length", 48))
+        # El ``PI0Policy`` de LeRobot 0.4.4 no trae tokenizer (lo arma su pipeline de
+        # procesadores, que no usamos): se carga aparte y se inyecta.
+        self.tokenizer = tokenizer
         cams = getattr(config, "image_features", None) or getattr(config, "cameras", None)
         self.cameras = list(cams) if cams else ["primary"]
 
     @classmethod
-    def from_pretrained(cls, source: str | Path, *, torch_dtype: Any = None) -> _LeRobotPi0Model:
+    def from_pretrained(
+        cls,
+        source: str | Path,
+        *,
+        torch_dtype: Any = None,
+        tokenizer: str = PALIGEMMA_TOKENIZER,
+    ) -> _LeRobotPi0Model:
         try:
             # Layout de lerobot >=0.4.x (el fijado en el grupo opcional ``pi0``).
             from lerobot.configs.policies import (  # pyright: ignore[reportMissingImports]
@@ -360,9 +484,11 @@ class _LeRobotPi0Model(nn.Module):
             config = cast(PI0Config, PreTrainedConfig.from_pretrained(str(source)))
             config.dtype = precision
 
+        # El tokenizer primero: si falta el acceso a HF, falla antes de cargar ~7 GB.
+        paligemma = load_paligemma_tokenizer(tokenizer)
         lerobot_policy = PI0Policy.from_pretrained(str(source), config=config)
         lerobot_policy.eval()
-        return cls(lerobot_policy)
+        return cls(lerobot_policy, paligemma)
 
     def _batch(self, cond: dict[str, Tensor], actions: Tensor | None) -> dict[str, Any]:
         """Arma el batch que espera ``PI0Policy`` de LeRobot a partir del ``cond``.

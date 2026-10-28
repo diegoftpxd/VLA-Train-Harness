@@ -35,7 +35,9 @@ Dictan la forma del dataset. Todas salen de `lerobot/policies/pi0/modeling_pi0.p
    pero debe llamarse **exactamente** como una de esas tres (usamos `base_0_rgb`).
 2. **Estado y acción.** `prepare_state`/`prepare_action` padean con ceros hasta
    `max_state_dim`/`max_action_dim` (**32**). ⇒ el estado y la acción del corpus
-   pueden tener menos dims (p. ej. 2); π0 padea solo. El adaptador **no** normaliza.
+   pueden tener menos dims (p. ej. 2); π0 padea solo. El **dataset no normaliza**
+   (entrega unidades reales); normaliza el adaptador `Pi0Policy` (ver "Puntos
+   abiertos" y `Learner Design.md`, "Adaptador `Pi0Policy`").
 3. **Largo del chunk.** `SupervisedSource` hace `torch.stack` de las acciones, así que
    **todas las chunks del batch deben tener el mismo largo H**, y π0 espera
    `H = n_action_steps = 50`. ⇒ el dataset tiene que entregar chunks de **largo fijo 50**.
@@ -215,15 +217,32 @@ criterio de éxito; ver el paso 5 y "Puntos abiertos".
 
 ## Puntos abiertos (no bloquean la prueba de humo; sí un entrenamiento real)
 
-- **Acciones sin normalizar.** `fm_mse` sale del orden de miles porque las acciones y
-  el estado de pusht están en píxeles (~70–450) y ni el dataset ni el adaptador los
-  normalizan. Para entrenar en serio hay que normalizarlos (p. ej. con las
-  estadísticas del corpus) antes de pasarlos a π0.
-- **π0 no ve la instrucción.** `Pi0Policy` toma el tokenizer de
-  `lerobot_policy.language_tokenizer`, atributo que no existe en lerobot 0.4.4 (el
-  tokenizer de PaliGemma lo arma `processor_pi0.py`). Queda en `None` y el procesador
-  usa el placeholder de un token pensado para los tests. Hay que cargar el tokenizer
-  (`google/paligemma-3b-pt-224`, repo con acceso restringido) e inyectarlo.
+- ✅ **Acciones sin normalizar (resuelto, verificado en el cluster: job 35229).** En
+  el job 35206 `fm_mse` salió del orden de miles porque las acciones y el estado de
+  pusht están en píxeles (~70–450) y nada los normalizaba: en lerobot 0.4.4 lo hace el
+  pipeline de procesadores, que el adaptador no usa. Ahora normaliza `Pi0Policy`
+  (acciones) y `Pi0Processor` (estado), en modo `mean_std`, con estadísticas que el
+  builder calcula al arrancar (`normalizer: {stats: fit}` en `configs/pi0_pusht_bc.yaml`).
+  Verificado en CPU contra el Core real con pusht: medias ~(234, 293) y desvíos ~(109,
+  98) px; las acciones quedan normalizadas con media ~0,2 y desvío ~0,84.
+- ✅ **π0 no veía la instrucción (resuelto, verificado en el cluster: job 35229).**
+  `Pi0Policy` tomaba el tokenizer de `lerobot_policy.language_tokenizer`, que no existe
+  en lerobot 0.4.4, y caía al placeholder de los tests. Ahora `_LeRobotPi0Model` carga
+  el tokenizer de PaliGemma (`policy.tokenizer`) y `Pi0Processor` replica la
+  tokenización de LeRobot (`"\n"` al final, relleno a la derecha, largo 48).
+  **Requisito:** el repo `google/paligemma-3b-pt-224` es de acceso restringido. Hay que
+  aceptar la licencia en Hugging Face y autenticarse con el mismo `HF_HOME` que usa el
+  sbatch: `HF_HOME=.hf_cache uv run --extra pi0 hf auth login`. Sin eso, el Learner
+  falla al arrancar con un error que lo explica.
+
+  **Resultado (job 35229, `COMPLETED`, 3 min 41 s), con normalización y tokenizer:**
+  los 10 pasos dieron `fm_mse` entre 0.057 y 0.126 y `grad_norm` entre 1.1 y 3.3
+  (paso 0: `fm_mse=0.0610`, `grad_norm=1.14`), contra 2465–7575 y 533–1056 en el job
+  35206. Es la escala esperable del flow matching con datos normalizados (el ruido
+  tiene varianza 1), y el `grad_norm` ya no queda recortado a la fuerza por
+  `grad_clip: 1.0`. La instrucción llega tokenizada como `'<bos>push the T block\n'`
+  (48 tokens, relleno a la derecha). El `lr=0.0001` del log es el `5e-5` del config
+  redondeado por el formato `.4f` del logger.
 - **Warning de `state_dict`**: sigue apareciendo (ver arriba); falta auditarlo.
 - **`train_openvla_bc.sbatch` tiene el mismo riesgo de puerto** (`tcp://127.0.0.1:5555`
   fijo en un nodo compartido). No se cambió porque no se volvió a correr; si falla con

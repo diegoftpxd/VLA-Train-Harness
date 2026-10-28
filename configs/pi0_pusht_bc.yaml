@@ -24,6 +24,14 @@ policy:
   torch_dtype: bfloat16
   # Fine-tuning parcial: solo el action expert; PaliGemma congelado (menos memoria).
   freeze: {trainable: [action]}
+  # Tokenizer de la instrucción (el que usa π0 en LeRobot). Repo de HF con acceso
+  # restringido: aceptá la licencia y autenticate, o poné una ruta local.
+  tokenizer: google/paligemma-3b-pt-224
+  # Acciones y estado de pusht están en píxeles (~70-450) y pi0_base no trae
+  # estadísticas del dataset: se calculan al arrancar con una muestra pedida a Core.
+  # mean_std es el modo que usa LeRobot para π0. Para reusar las de una corrida,
+  # poné en `stats` la carpeta policy/ de su checkpoint.
+  normalizer: {mode: mean_std, stats: fit, fit_samples: 256}
 
 # π0 es flow matching (sin log-prob): sirve para BC, no para PPO/GRPO.
 algorithm: {type: bc}

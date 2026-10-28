@@ -19,6 +19,7 @@ from torch import Tensor, nn
 from vla_common import Observation
 from vla_learner.policy.adapters import Pi0Policy, Pi0Processor
 from vla_learner.policy.interfaces import Capability
+from vla_learner.policy.normalizer import ActionNormalizer
 
 pytestmark = pytest.mark.fast
 
@@ -155,3 +156,180 @@ def test_capacidad_no_es_log_prob() -> None:
     policy = _policy()
     assert Capability.LOG_PROB not in policy.capabilities
     assert Capability.VALUE not in policy.capabilities
+
+
+# -- Normalización (acciones en la política, estado en el procesador) -------
+
+
+def _normalizer(dim: int, centro: float, escala: float) -> ActionNormalizer:
+    valores = np.array([[centro - escala] * dim, [centro + escala] * dim], dtype=np.float32)
+    return ActionNormalizer.from_values(valores, mode="mean_std")
+
+
+class _RecordingPi0Model(nn.Module):
+    """Doble que registra lo que recibe y predice un chunk fijo **normalizado**.
+
+    ``predict_chunk`` devuelve ``padded_dim`` dims (como π0, que padea a 32) para
+    comprobar que el adaptador se queda con las reales.
+    """
+
+    def __init__(self, prediccion: Tensor) -> None:
+        super().__init__()
+        self.peso = nn.Parameter(torch.zeros(1))
+        self.prediccion = prediccion
+        self.acciones_recibidas: Tensor | None = None
+        self.cond_recibido: dict[str, Tensor] | None = None
+
+    def predict_chunk(self, cond: dict[str, Tensor]) -> Tensor:
+        self.cond_recibido = cond
+        batch = cond["state"].shape[0]
+        return self.prediccion.expand(batch, -1, -1) + 0 * self.peso
+
+    def compute_loss(self, cond: dict[str, Tensor], actions: Tensor) -> Tensor:
+        self.cond_recibido = cond
+        self.acciones_recibidas = actions
+        return (actions**2).mean() + 0 * self.peso.sum()
+
+
+def test_imitation_loss_normaliza_las_acciones() -> None:
+    norm = _normalizer(ACTION_DIM, centro=300.0, escala=100.0)
+    model = _RecordingPi0Model(torch.zeros(1, CHUNK, ACTION_DIM))
+    policy = Pi0Policy(
+        model,
+        Pi0Processor([CAMERA]),
+        action_dim=ACTION_DIM,
+        chunk_size=CHUNK,
+        action_normalizer=norm,
+    )
+    reales = torch.full((2, CHUNK, ACTION_DIM), 400.0)  # unidades reales (píxeles)
+    policy.imitation_loss(policy.processor(_observations(2)), reales)
+    assert model.acciones_recibidas is not None
+    # (400 - 300) / 100 = 1: al modelo le llegan normalizadas, no en píxeles.
+    torch.testing.assert_close(model.acciones_recibidas, torch.ones_like(reales))
+
+
+def test_act_recorta_dims_padeadas_y_desnormaliza() -> None:
+    padded = 32  # π0 predice max_action_dim dims
+    prediccion = torch.zeros(1, CHUNK, padded)
+    prediccion[..., :ACTION_DIM] = 1.0  # normalizado
+    prediccion[..., ACTION_DIM:] = 99.0  # padding: no debe salir
+    norm = _normalizer(ACTION_DIM, centro=300.0, escala=100.0)
+    policy = Pi0Policy(
+        _RecordingPi0Model(prediccion),
+        Pi0Processor([CAMERA]),
+        action_dim=ACTION_DIM,
+        chunk_size=CHUNK,
+        action_normalizer=norm,
+    )
+    out = policy.act(policy.processor(_observations(3)), deterministic=True)
+    assert out.actions.shape == (3, CHUNK, ACTION_DIM)
+    # 1 * 100 + 300 = 400: sale en unidades reales (POL-07).
+    torch.testing.assert_close(out.actions, torch.full((3, CHUNK, ACTION_DIM), 400.0))
+
+
+def test_action_dim_debe_coincidir_con_el_normalizador() -> None:
+    with pytest.raises(ValueError, match="no coincide"):
+        Pi0Policy(
+            _RecordingPi0Model(torch.zeros(1, CHUNK, ACTION_DIM)),
+            Pi0Processor([CAMERA]),
+            action_dim=ACTION_DIM,
+            chunk_size=CHUNK,
+            action_normalizer=_normalizer(2, 0.0, 1.0),
+        )
+
+
+def test_procesador_normaliza_la_propiocepcion() -> None:
+    norm = _normalizer(7, centro=10.0, escala=2.0)
+    obs = _observations(2)
+    inputs = Pi0Processor([CAMERA], state_normalizer=norm)(obs)
+    esperado = (torch.as_tensor(np.stack([o.proprio for o in obs])) - 10.0) / 2.0
+    torch.testing.assert_close(inputs.tensors["state"], esperado)
+
+
+def test_normalizadores_viajan_en_el_state_dict() -> None:
+    acciones, estado = _normalizer(ACTION_DIM, 300.0, 100.0), _normalizer(7, 10.0, 2.0)
+    policy = Pi0Policy(
+        _RecordingPi0Model(torch.zeros(1, CHUNK, ACTION_DIM)),
+        Pi0Processor([CAMERA], state_normalizer=estado),
+        action_dim=ACTION_DIM,
+        chunk_size=CHUNK,
+        action_normalizer=acciones,
+    )
+    claves = set(policy.state_dict())
+    assert any(k.startswith("action_normalizer.") for k in claves)
+    assert any(k.startswith("state_normalizer.") for k in claves)
+
+
+def test_save_pretrained_guarda_las_estadisticas(tmp_path) -> None:
+    from vla_learner.builder import _resolve_normalizer
+    from vla_learner.testing.fake_core import FakeCoreClient
+
+    acciones, estado = _normalizer(ACTION_DIM, 300.0, 100.0), _normalizer(7, 10.0, 2.0)
+    policy = Pi0Policy(
+        _RecordingPi0Model(torch.zeros(1, CHUNK, ACTION_DIM)),
+        Pi0Processor([CAMERA], state_normalizer=estado),
+        action_dim=ACTION_DIM,
+        chunk_size=CHUNK,
+        action_normalizer=acciones,
+    )
+    policy.save_pretrained(tmp_path)
+    # ``normalizer.stats: <directorio>`` recupera las mismas estadísticas.
+    resuelto = _resolve_normalizer({"mode": "mean_std", "stats": str(tmp_path)}, FakeCoreClient())
+    assert resuelto is not None
+    x = torch.randn(2, CHUNK, ACTION_DIM)
+    torch.testing.assert_close(
+        resuelto["action"].normalize(x, "default"), acciones.normalize(x, "default")
+    )
+    s = torch.randn(2, 7)
+    torch.testing.assert_close(
+        resuelto["state"].normalize(s, "default"), estado.normalize(s, "default")
+    )
+
+
+# -- Tokenizer de PaliGemma ------------------------------------------------
+
+
+class _RecordingTokenizer:
+    """Doble del tokenizer: registra la llamada y devuelve ids de largo fijo."""
+
+    def __init__(self) -> None:
+        self.textos: list[str] = []
+        self.kwargs: dict = {}
+
+    def __call__(self, textos: list[str], **kwargs) -> dict[str, Tensor]:
+        self.textos, self.kwargs = list(textos), kwargs
+        largo = kwargs["max_length"]
+        return {
+            "input_ids": torch.ones(len(textos), largo, dtype=torch.long),
+            "attention_mask": torch.ones(len(textos), largo, dtype=torch.long),
+        }
+
+
+def test_tokenizacion_replica_el_pipeline_de_lerobot() -> None:
+    tokenizer = _RecordingTokenizer()
+    inputs = Pi0Processor([CAMERA], tokenizer=tokenizer, max_lang_len=48)(_observations(2))
+    # Pi0NewLineProcessor: PaliGemma espera la instrucción terminada en "\n".
+    assert tokenizer.textos == ["pick up the red block\n"] * 2
+    assert tokenizer.kwargs["padding"] == "max_length"
+    assert tokenizer.kwargs["padding_side"] == "right"
+    assert tokenizer.kwargs["max_length"] == 48 and tokenizer.kwargs["truncation"] is True
+    assert inputs.tensors["lang_tokens"].shape == (2, 48)
+    assert inputs.tensors["lang_masks"].dtype == torch.bool
+
+
+def test_tokenizer_sin_acceso_da_un_error_claro(monkeypatch) -> None:
+    import sys
+    import types
+
+    from vla_learner.policy.adapters.pi0 import load_paligemma_tokenizer
+
+    class _AutoTokenizer:
+        @staticmethod
+        def from_pretrained(source: str):
+            raise OSError("Cannot access gated repo")
+
+    falso = types.ModuleType("transformers")
+    falso.AutoTokenizer = _AutoTokenizer  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "transformers", falso)
+    with pytest.raises(RuntimeError, match="acceso restringido"):
+        load_paligemma_tokenizer()

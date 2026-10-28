@@ -67,6 +67,10 @@ class ActionNormalizer(nn.Module):
     def default_embodiment(self) -> str:
         return self._embodiments[0]
 
+    def dim(self, embodiment: str | None = None) -> int:
+        """Número de dimensiones ``D`` que normaliza (el de ``embodiment``, o el primero)."""
+        return int(self._buffer(embodiment or self.default_embodiment(), "mean").shape[0])
+
     def _buffer(self, embodiment: str, field: str) -> Tensor:
         if embodiment not in self._embodiments:
             raise KeyError(
@@ -89,13 +93,16 @@ class ActionNormalizer(nn.Module):
         safe_scale = torch.where(scale.abs() < _EPS, torch.ones_like(scale), scale)
         return center, safe_scale
 
+    # Las estadísticas se llevan al device de la entrada: un procesador puede
+    # normalizar en CPU aunque la política (dueña de los buffers) esté en GPU.
+
     def normalize(self, actions: Tensor, embodiment: str) -> Tensor:
         center, scale = self._center_scale(embodiment)
-        return (actions - center) / scale
+        return (actions - center.to(actions.device)) / scale.to(actions.device)
 
     def denormalize(self, actions: Tensor, embodiment: str) -> Tensor:
         center, scale = self._center_scale(embodiment)
-        return actions * scale + center
+        return actions * scale.to(actions.device) + center.to(actions.device)
 
     @classmethod
     def fit(
@@ -108,6 +115,23 @@ class ActionNormalizer(nn.Module):
         valores = np.concatenate(
             [np.stack([np.asarray(a.values) for a in chunk]) for _, chunk in samples], axis=0
         )
+        return cls.from_values(valores, mode=mode, embodiment=embodiment)
+
+    @classmethod
+    def from_values(
+        cls,
+        values: np.ndarray,
+        mode: Mode = "mean_std",
+        embodiment: str = "default",
+    ) -> ActionNormalizer:
+        """Calcula estadísticas por dimensión de ``values`` ``[N, D]``.
+
+        Sirve para cualquier vector en unidades reales, no solo acciones: un
+        procesador lo usa también para normalizar la propiocepción.
+        """
+        valores = np.asarray(values, dtype=np.float32)
+        if valores.ndim != 2 or valores.shape[0] == 0:
+            raise ValueError(f"from_values espera un arreglo [N, D] con N > 0, no {valores.shape}.")
         stats = ActionStats(
             mean=valores.mean(axis=0),
             std=valores.std(axis=0),

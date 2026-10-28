@@ -70,6 +70,8 @@ sbatch slurm/pi0_smoke.sbatch
   `lerobot` + `torch`): el script lo instala solo.
 - **Primera corrida:** descarga ~7 GB de pesos de Hugging Face. Si tu `$HOME` es
   chico, exportá `HF_HOME` a un disco con espacio antes del `sbatch`.
+- También carga el tokenizer de PaliGemma, que está en un repo con acceso
+  restringido: hace falta el mismo login de HF que para `pi0_bc.sbatch` (abajo).
 - Memoria: π0 ocupa ~7 GB en bf16; con solo el *action expert* entrenable, una
   GPU de ≥16 GB alcanza.
 
@@ -97,6 +99,16 @@ sbatch slurm/pi0_bc.sbatch
   `configs/pi0_pusht_bc.yaml` con esa dirección; los YAML del repo no cambian.
 - El Core corre en su propio venv, `.venv-core` (`UV_PROJECT_ENVIRONMENT`), para que
   el `uv run --extra pi0` del Learner no le reinstale numpy mientras corre.
+- **Antes de la primera corrida:** el Learner carga el tokenizer de PaliGemma
+  (`google/paligemma-3b-pt-224`), que está en un repo con acceso restringido.
+  Aceptá la licencia en Hugging Face y guardá el token en el `HF_HOME` que usa el
+  job (`.hf_cache`, ver `common.sh`):
+
+  ```bash
+  HF_HOME=.hf_cache uv run --extra pi0 hf auth login
+  ```
+- Al arrancar, el Learner calcula las estadísticas de normalización con 256 pares
+  pedidos al Core (`normalizer.stats: fit` en `configs/pi0_pusht_bc.yaml`).
 - Éxito: el log (`slurm/logs/pi0-bc-<JOBID>.out`) muestra los 10 pasos con
   `fm_mse` y `grad_norm` finitos, y el job termina en `COMPLETED`.
 
