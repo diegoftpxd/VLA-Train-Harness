@@ -160,7 +160,12 @@ def _cargar_lerobot(repo_id: str) -> Any:
         from lerobot.datasets.lerobot_dataset import LeRobotDataset  # type: ignore
     except ImportError:  # layout viejo (< 0.4)
         from lerobot.common.datasets.lerobot_dataset import LeRobotDataset  # type: ignore
-    return LeRobotDataset(repo_id)
+    # ``pusht`` guarda las cámaras como vídeo y lerobot las decodifica al indexar.
+    # Su backend por defecto es ``torchcodec``, cuyo wheel (0.10) choca de ABI con
+    # torch 2.6 (``undefined symbol`` de ``libc10`` al cargar libtorchcodec). Forzamos
+    # ``pyav``, que trae su propio FFmpeg embebido y decodifica vía torchvision, sin
+    # depender de torch: así el único requisito pesado sigue siendo el que ya exige π0.
+    return LeRobotDataset(repo_id, video_backend="pyav")
 
 
 def _episodios_de_lerobot(

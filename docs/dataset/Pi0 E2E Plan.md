@@ -86,9 +86,9 @@ Mapeo al formato que π0 necesita:
 ## Plan de acción
 
 Cada paso cierra con `uv run pytest -m fast`, `ruff` y `pyright` en verde cuando toque
-código, y un commit en la rama `Dataset`. **Estado: pasos 1–4 implementados** (los
-entregables existen y la suite `fast` los cubre); solo falta correr la prueba en el
-cluster (paso 5).
+código, y un commit en la rama `Dataset`. **Estado: los cinco pasos están hechos.**
+La prueba corrió en el cluster (job Slurm 35206, nodo `llaima`, A40) y cumplió el
+criterio de éxito; ver el paso 5 y "Puntos abiertos".
 
 1. ✅ **Script de preparación (offline, una vez).** `scripts/prepare_pi0_pusht.py`:
    - carga pusht con `from lerobot.datasets.lerobot_dataset import LeRobotDataset`
@@ -107,6 +107,20 @@ cluster (paso 5).
      derivado, no se versiona).
    - **Dato no confiable:** el corpus descargado va a su propio directorio y solo se
      lee por ruta (regla de `Dataset Design.md`); el script corre con `python -I`.
+   - **Desviación: backend de vídeo `pyav`.** pusht guarda las cámaras como vídeo y
+     lerobot las decodifica al indexar `dataset[i]`. Su backend por defecto,
+     `torchcodec`, entra como dependencia transitiva de lerobot sin fijar, y uv
+     resolvió la 0.10.0, que no es compatible a nivel binario con `torch 2.6.0`:
+     `RuntimeError: Could not load libtorchcodec` (para el FFmpeg 6 del sistema,
+     `undefined symbol: _ZN3c1013MessageLogger6streamB5cxx11Ev` de `libc10`). El
+     script abre el dataset con `LeRobotDataset(repo_id, video_backend="pyav")`:
+     PyAV trae su propio FFmpeg y decodifica vía torchvision 0.21, que sí casa con
+     torch 2.6. No agrega ni cambia dependencias.
+   - **Resultado:** 412 episodios de 50 pasos en `data/pi0_pusht` (287 MB), todos con
+     `observation.images.base_0_rgb (50,3,96,96)`, `proprio (50,2)` y `actions (50,2)`
+     en `float32`. El script decodifica todos los frames del corpus aunque se pase
+     `--max-episodes` (el tope solo limita lo que se escribe) y los junta en RAM
+     (~3 GB); tarda varios minutos.
    - Validación en `fast`: `packages/vla_core/tests/test_prepare_pi0_pusht.py` ejercita
      los helpers puros del script (`ventanas`, `preparar_desde_episodios`) sobre arrays
      sintéticos, chequea el troceo a 50 y lee la salida con `LocalDataset`, sin descargar
@@ -151,11 +165,34 @@ cluster (paso 5).
    - recursos: GPU grande (π0 ~7 GB bf16 **no** cabe en la RTX 2050; sí en la 2080 Ti/llaima
      al borde), `--nodelist=llaima` como el smoke, `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`.
    - Para correr a mano (dos terminales), mismos comandos.
+   - **Desviaciones encontradas al correrlo en el cluster:**
+     - **Socket `ipc://` por job, no `tcp://127.0.0.1:5555`.** `llaima` es compartido
+       y otro usuario tenía tomado el 5555: el Core no pudo hacer bind y
+       `wait_for_port` dio "listo" por el proceso ajeno (job 35205, cancelado). Como
+       Core y Learner están en el mismo nodo, el sbatch genera copias de los dos YAML
+       con `ipc:///tmp/vla-pi0-bc-<job>.XXXXXX/core.ipc` y espera a que exista el
+       socket. Si el Core muere antes, el job termina con error. Los YAML del repo no
+       cambian y las rutas relativas se siguen resolviendo contra la raíz del repo.
+     - **Venv propio del Core (`.venv-core`).** El lock resuelve numpy 2.5.4 para la
+       base y 2.2.6 para el extra `pi0`. Si los dos procesos compartieran `.venv`, el
+       `uv run --extra pi0` del Learner reinstalaría numpy en disco con el Core ya
+       corriendo. El Core corre con `UV_PROJECT_ENVIRONMENT=.venv-core`. Ese venv
+       trae torch, porque la base del workspace instala `vla-learner`, pero el Core
+       no lo importa.
+     - **`#SBATCH --comment`.** El cluster rechaza los jobs que no lo traen.
 
-5. **Criterio de éxito.** El Learner conecta al Core, `sample_supervised` devuelve pares
-   reales, `imitation_loss` corre y `num_iterations` pasos avanzan imprimiendo `fm_mse`
-   y `grad_norm` finitos (como el smoke, pero con datos reales). No se busca que
-   converja: se busca que el **cableado de dos procesos con dataset real** funcione.
+5. ✅ **Criterio de éxito.** El Learner conecta al Core, `sample_supervised` devuelve
+   pares reales, `imitation_loss` corre y `num_iterations` pasos avanzan imprimiendo
+   `fm_mse` y `grad_norm` finitos (como el smoke, pero con datos reales). No se busca
+   que converja: se busca que el **cableado de dos procesos con dataset real** funcione.
+
+   **Resultado (job 35206, `COMPLETED`, 2 min 57 s):** los 10 pasos dieron valores
+   finitos, con `fm_mse` entre 2465 y 7575 y `grad_norm` entre 533 y 1056 (paso 0:
+   `fm_mse=4765.69`, `grad_norm=827.56`; paso 9: `fm_mse=7575.07`,
+   `grad_norm=1055.67`). La pérdida oscila, lo esperable con 10 pasos y
+   `batch_size: 2`. Antes de gastar GPU se verificó en CPU que el Core real con este
+   config, por `ipc://`, entrega al `CoreClient` pares reales (cámara `base_0_rgb
+   (3,96,96)`, `proprio (2,)`, chunk de 50 acciones).
 
 ## Fuera de alcance de esta prueba
 
@@ -175,3 +212,19 @@ cluster (paso 5).
 - **Warning de `state_dict`** observado al cargar `pi0_base` ("Could not remap state
   dict keys"): no es fatal (el modelo carga y entrena), pero conviene auditarlo aparte
   para descartar pesos sin mapear.
+
+## Puntos abiertos (no bloquean la prueba de humo; sí un entrenamiento real)
+
+- **Acciones sin normalizar.** `fm_mse` sale del orden de miles porque las acciones y
+  el estado de pusht están en píxeles (~70–450) y ni el dataset ni el adaptador los
+  normalizan. Para entrenar en serio hay que normalizarlos (p. ej. con las
+  estadísticas del corpus) antes de pasarlos a π0.
+- **π0 no ve la instrucción.** `Pi0Policy` toma el tokenizer de
+  `lerobot_policy.language_tokenizer`, atributo que no existe en lerobot 0.4.4 (el
+  tokenizer de PaliGemma lo arma `processor_pi0.py`). Queda en `None` y el procesador
+  usa el placeholder de un token pensado para los tests. Hay que cargar el tokenizer
+  (`google/paligemma-3b-pt-224`, repo con acceso restringido) e inyectarlo.
+- **Warning de `state_dict`**: sigue apareciendo (ver arriba); falta auditarlo.
+- **`train_openvla_bc.sbatch` tiene el mismo riesgo de puerto** (`tcp://127.0.0.1:5555`
+  fijo en un nodo compartido). No se cambió porque no se volvió a correr; si falla con
+  `Address already in use`, se arregla igual que `pi0_bc.sbatch`.

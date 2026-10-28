@@ -1,5 +1,6 @@
 # Entornos de uv / Python
 .venv/
+.venv-core/
 __pycache__/
 *.py[cod]
 *.egg-info/

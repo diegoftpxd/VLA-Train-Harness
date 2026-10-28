@@ -2,9 +2,10 @@
 # Prueba E2E de DOS PROCESOS de π0 (BC) sobre un dataset real (pusht) en un nodo.
 #
 # Levanta el Core (CPU, ZeroMQ, base liviana SIN torch/lerobot) y el Learner π0
-# (GPU) en el MISMO nodo, comunicados por tcp://127.0.0.1:5555, con los configs:
+# (GPU) en el MISMO nodo, comunicados por un socket ipc:// propio del job (el
+# script reescribe la dirección de los YAML; ver abajo), con los configs:
 #     configs/core/pi0_pusht.yaml   (Core: dataset `local` = pusht convertido)
-#     configs/pi0_pusht_bc.yaml     (Learner: pi0 BC, core.address = tcp://localhost:5555)
+#     configs/pi0_pusht_bc.yaml     (Learner: pi0 BC)
 #
 # Es el paso 4 de docs/dataset/Pi0 E2E Plan.md. A diferencia de pi0_smoke.sbatch
 # (un proceso, datos sintéticos), acá los datos salen de un corpus real a través
@@ -24,6 +25,7 @@
 # cuenta, GPU, memoria y tiempo a tu sitio.
 
 #SBATCH --job-name=pi0-bc
+#SBATCH --comment="VLA-Train-Harness: prueba E2E de dos procesos (Core + Learner pi0 BC) sobre el dataset real pusht"
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=diego.toledo@uc.cl
 #SBATCH --ntasks=1
@@ -55,8 +57,22 @@ mkdir -p slurm/logs
 
 CORE_CONFIG="configs/core/pi0_pusht.yaml"
 LEARNER_CONFIG="configs/pi0_pusht_bc.yaml"
-CORE_HOST="127.0.0.1"
-CORE_PORT="5555"
+
+# Core y Learner corren en el MISMO nodo, así que se hablan por ipc:// (como pide
+# Architecture.md) en un socket propio del job, NO por el tcp://...:5555 fijo de
+# los YAML: el nodo es compartido y ese puerto puede estar tomado por otro
+# usuario (pasó en el job 35205: el Core no pudo hacer bind y el chequeo de
+# puerto dio "listo" por el proceso ajeno). Se generan copias de los YAML con la
+# dirección del job; las rutas relativas siguen resolviéndose contra la raíz del
+# repo (el cwd), no contra el directorio del YAML.
+JOB_TMP="$(mktemp -d "/tmp/vla-pi0-bc-${SLURM_JOB_ID:-local}.XXXXXX")"
+CORE_SOCKET="${JOB_TMP}/core.ipc"
+CORE_ADDRESS="ipc://${CORE_SOCKET}"
+sed -E "s#address: \"[^\"]+\"#address: \"${CORE_ADDRESS}\"#" "${CORE_CONFIG}" > "${JOB_TMP}/core.yaml"
+sed -E "s#address: \"[^\"]+\"#address: \"${CORE_ADDRESS}\"#" "${LEARNER_CONFIG}" > "${JOB_TMP}/learner.yaml"
+CORE_CONFIG="${JOB_TMP}/core.yaml"
+LEARNER_CONFIG="${JOB_TMP}/learner.yaml"
+echo ">> Core y Learner por ${CORE_ADDRESS}"
 
 # expandable_segments evita que la fragmentación del allocator de PyTorch tire un
 # CUDA OutOfMemory por unos pocos MiB cuando π0 llena casi toda la VRAM.
@@ -71,8 +87,12 @@ if [[ ! -d "data/pi0_pusht" ]]; then
 fi
 
 # --- Core en segundo plano (CPU, base liviana: SIN --extra) -----------------
+# El Core usa su PROPIO venv (.venv-core). El lock resuelve numpy distinto para la
+# base y para el extra `pi0`, así que si ambos procesos compartieran .venv, el
+# `uv run --extra pi0` del Learner reinstalaría numpy en disco con el Core ya
+# corriendo. Con venvs separados cada proceso queda con sus dependencias fijas.
 echo ">> Arrancando Core: ${CORE_CONFIG}"
-uv run vla-core --config "${CORE_CONFIG}" &
+UV_PROJECT_ENVIRONMENT=.venv-core uv run vla-core --config "${CORE_CONFIG}" &
 CORE_PID=$!
 
 # Al terminar (éxito, error o cancelación), bajar el Core.
@@ -80,11 +100,27 @@ cleanup() {
     echo ">> Bajando Core (PID ${CORE_PID})..."
     kill "${CORE_PID}" 2>/dev/null || true
     wait "${CORE_PID}" 2>/dev/null || true
+    rm -rf "${JOB_TMP}"
 }
 trap cleanup EXIT
 
-# Esperar a que el Core esté atendiendo antes de lanzar el Learner.
-wait_for_port "${CORE_HOST}" "${CORE_PORT}"
+# Esperar a que el Core cree su socket ipc antes de lanzar el Learner. Si el Core
+# muere mientras tanto (bind fallido, config inválida), se corta acá con error en
+# vez de lanzar el Learner contra nada.
+echo "Esperando a que el Core abra ${CORE_SOCKET} (máx 120s)..."
+for _ in $(seq 120); do
+    [[ -S "${CORE_SOCKET}" ]] && break
+    if ! kill -0 "${CORE_PID}" 2>/dev/null; then
+        echo "ERROR: el Core terminó antes de abrir su socket (ver .err)." >&2
+        exit 1
+    fi
+    sleep 1
+done
+if [[ ! -S "${CORE_SOCKET}" ]]; then
+    echo "ERROR: el Core no abrió ${CORE_SOCKET} tras 120s." >&2
+    exit 1
+fi
+echo ">> Core listo en ${CORE_ADDRESS}"
 
 # --- Learner π0 en primer plano (GPU, extra `pi0`) --------------------------
 echo ">> Arrancando Learner π0: ${LEARNER_CONFIG}"

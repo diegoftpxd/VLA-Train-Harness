@@ -23,6 +23,7 @@ la misma.
 |---|---|---|---|
 | `smoke_cpu.sbatch` | 1 | no | Valida el entorno: contratos `fast` + BC tiny en CPU |
 | `pi0_smoke.sbatch` | 1 | sí | Prueba de entrenamiento mínimo de π0: unos pasos de BC con solo el *action expert* entrenable (resto congelado) |
+| `pi0_bc.sbatch` | 1 | sí | Core + Learner π0 (BC) en el mismo nodo, con el dataset real pusht servido por Core |
 | `train_openvla_bc.sbatch` | 1 | sí | Core + Learner en el mismo nodo (OpenVLA BC) |
 | `core.sbatch` + `learner.sbatch` | 2 | sí (Learner) | Core en CPU y Learner en GPU, en nodos separados |
 
@@ -76,10 +77,28 @@ Revisá en el log (`slurm/logs/vla-pi0-smoke-<JOBID>.out`) que la loss `fm_mse`
 cambie entre pasos y que `grad_norm` sea finito y > 0: eso confirma que la sección
 entrenable recibe gradientes.
 
-Para pasar de esta prueba al **entrenamiento supervisado completo** (demos reales
-servidas por Core, no datos sintéticos), usá `configs/pi0_bc.yaml` con el flujo de
-`train_openvla_bc.sbatch` como plantilla (cambiando los configs de OpenVLA por los
-de π0).
+Para pasar de esta prueba al flujo supervisado con demos reales servidas por Core,
+usá `pi0_bc.sbatch` (sección siguiente).
+
+### π0 BC con dos procesos sobre un dataset real (GPU)
+
+Prueba E2E de `docs/dataset/Pi0 E2E Plan.md`: el Core sirve el corpus `pusht`
+convertido a formato `local` y el Learner entrena π0 con BC. Primero convertí el
+corpus, una sola vez, en el nodo de login:
+
+```bash
+uv run --extra pi0 python -I scripts/prepare_pi0_pusht.py   # escribe data/pi0_pusht/
+sbatch slurm/pi0_bc.sbatch
+```
+
+- Core y Learner se hablan por un socket `ipc://` propio del job, no por
+  `tcp://127.0.0.1:5555`: el nodo es compartido y ese puerto puede estar tomado.
+  El script genera copias de `configs/core/pi0_pusht.yaml` y
+  `configs/pi0_pusht_bc.yaml` con esa dirección; los YAML del repo no cambian.
+- El Core corre en su propio venv, `.venv-core` (`UV_PROJECT_ENVIRONMENT`), para que
+  el `uv run --extra pi0` del Learner no le reinstale numpy mientras corre.
+- Éxito: el log (`slurm/logs/pi0-bc-<JOBID>.out`) muestra los 10 pasos con
+  `fm_mse` y `grad_norm` finitos, y el job termina en `COMPLETED`.
 
 ### OpenVLA BC en un solo nodo (recomendado)
 
@@ -93,6 +112,10 @@ sbatch slurm/train_openvla_bc.sbatch
 
 El script arranca el Core en segundo plano, espera a que atienda, corre el
 Learner en primer plano y baja el Core al terminar.
+
+> Ojo: el puerto 5555 es fijo. En un nodo compartido puede estar tomado por otro
+> usuario; el Core falla con `Address already in use` y el chequeo de puerto da
+> "listo" de todas formas. Si pasa, usá `ipc://` por job como `pi0_bc.sbatch`.
 
 ### Core y Learner en nodos separados (CPU + GPU)
 
