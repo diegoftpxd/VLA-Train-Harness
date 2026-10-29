@@ -342,11 +342,15 @@ coincide con la del dataset con el que se entrenó π0.
 
 | ID | Archivo | Qué verifica | Marca |
 |---|---|---|---|
-| LIB-01 | `vla_env/tests/test_libero_mapping.py` | `quat2axisangle` contra valores conocidos (identidad, 90° en cada eje, el caso `w≈1`) | `fast` |
+| LIB-01 | `vla_env/tests/test_env_libero.py` | `quat2axisangle` contra valores conocidos (identidad, 90° en cada eje, el caso `w≈1`) | `fast` |
 | LIB-02 | idem | `libero_proprio` arma los 8 valores en el orden del dataset desde un `raw` sintético | `fast` |
 | LIB-03 | idem | `libero_images` rota 180° (un píxel marcado arriba a la izquierda termina abajo a la derecha) y entrega CHW `float32` en `[0, 1]` | `fast` |
-| LIB-04 | idem | `index_tasks` con un benchmark falso: idiomas → (suite, `task_id`), y `max_steps_for` por suite | `fast` |
-| LIB-05 | `vla_env/tests/test_env_from_config.py` | Suite ENV contra `VLA_ENV_CONFIG=configs/env/libero.yaml` (genérico: sirve para cualquier adaptador futuro) | `heavy` |
+| LIB-04 | idem | `index_tasks` con un benchmark falso: idiomas → (suite, `task_id`) y error si una tarea se repite; límites por suite | `fast` |
+| LIB-08 | `test_env_libero.py` | El envoltorio `_LiberoSim` contra un `OffScreenRenderEnv` falso: semilla → `init_states[seed % N]`, pasos de asentamiento con la no-op, control relativo, `is_success` desde `check_success()`; `seed=None` elige un estado válido | `fast` |
+| LIB-09 | idem | `ensure_libero_config` escribe los valores por defecto de LIBERO sin importarlo y no pisa una config existente | `fast` |
+| FACT-03 | idem | `libero` sin el extra da un `ImportError` que nombra `uv sync --extra libero` | `fast` |
+| MAP | `test_env_map_check.py` | `check_env_vs_dataset.py` sobre datos sintéticos detecta cada desajuste (cámara, dimensión y rango del estado, rotación, instrucción) y `main` devuelve 1 | `fast` |
+| LIB-05 | `vla_env/tests/test_env_from_config.py` | Suites ENV y SRVE contra `VLA_ENV_CONFIG=configs/env/libero.yaml` (genérico: sirve para cualquier adaptador futuro; verificado localmente con `reach.yaml`) | `heavy` |
 | LIB-06 | idem | Recrear el simulador al cambiar de tarea mantiene el contrato: `reset(task=a)`, `reset(task=b)` y `reset(task=a)` dan instrucciones correctas y el mismo estado inicial que la primera vez con la misma semilla | `heavy` |
 | LIB-07 | `check_env_vs_dataset.py` en sbatch | Consistencia de la observación con el dataset (punto 4) | cluster |
 

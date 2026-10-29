@@ -15,6 +15,8 @@ dependencies = [
 [project.optional-dependencies]
 openvla = ["vla-learner[openvla]"]
 pi0 = ["vla-learner[pi0]"]
+# Ambiente LIBERO (proceso vla-env). Corre en su propio venv: ver slurm/libero_env_check.sbatch.
+libero = ["vla-env[libero]"]
 
 # El root es un workspace virtual: no se empaqueta, solo agrupa los paquetes.
 [tool.uv]

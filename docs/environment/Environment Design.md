@@ -355,6 +355,9 @@ dataset `lerobot/libero` con el que se entrenó π0:
 | Éxito | `sim.check_success()` → `_success`. |
 | Límite | `max_steps` por suite: spatial 280, object 280, goal 300, 10 520, 90 400 (los de lerobot). |
 | Render en cluster | `MUJOCO_GL=egl` en el sbatch. |
+| API del simulador | `OffScreenRenderEnv` usa la API vieja de gym (`step` → 4 valores, `reset` sin semilla). Un envoltorio `_LiberoSim` la lleva a la que espera `GymEnvironment` (semilla → estado inicial, asentamiento, `is_success`). |
+| Config de LIBERO | Sin `config.yaml`, el primer `import libero.libero` la pide con `input()` y cuelga un job. `ensure_libero_config()` la escribe antes del import, con los mismos valores por defecto que LIBERO (en `LIBERO_CONFIG_PATH`, o `~/.libero`). |
+| Dependencia | `hf-libero` 0.1.4 (robosuite 1.4.0, mujoco 3.8.1) resuelve en el lock junto a `pi0` y `openvla`, sin declarar conflictos. Arrastra `torch` y `transformers` de forma transitiva (robomimic); el adaptador no los importa. |
 
 Hay que **verificar con `--smoke --save`** que la orientación de las imágenes y el layout
 del estado coinciden con los del dataset convertido (`data/pi0_libero`) antes de evaluar.

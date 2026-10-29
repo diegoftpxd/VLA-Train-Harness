@@ -1,6 +1,7 @@
 # Entornos de uv / Python
 .venv/
 .venv-core/
+.venv-env/
 __pycache__/
 *.py[cod]
 *.egg-info/
@@ -19,6 +20,9 @@ runs/
 
 # Pesos descargados de Hugging Face (ver slurm/common.sh: HF_HOME)
 .hf_cache/
+
+# Config de LIBERO que escribe el adaptador (vla_env/libero.py, LIBERO_CONFIG_PATH)
+.libero/
 
 # Datasets convertidos desde un corpus descargado (p. ej. scripts/prepare_lerobot_local.py).
 # Son datos derivados, grandes y no confiables: se regeneran, no se versionan.

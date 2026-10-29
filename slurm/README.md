@@ -25,6 +25,7 @@ la misma.
 | `pi0_smoke.sbatch` | 1 | sí | Prueba de entrenamiento mínimo de π0: unos pasos de BC con solo el *action expert* entrenable (resto congelado) |
 | `pi0_bc.sbatch` | 1 | sí | Core + Learner π0 (BC) en el mismo nodo, con un dataset real servido por Core (pusht o LIBERO) |
 | `pi0_check_embed.sbatch` | 1 | sí | Verifica que el `embed_tokens` de π0 esté atado a `lm_head` y cargado (el warning `Could not remap state dict keys` es inofensivo); no entrena |
+| `libero_env_check.sbatch` | 1 | sí (render EGL) | Chequeo del ambiente LIBERO (`vla-env`, venv `.venv-env`): smoke, suites ENV/SRVE contra el simulador real y comparación MAP con el dataset convertido |
 | `train_openvla_bc.sbatch` | 1 | sí | Core + Learner en el mismo nodo (OpenVLA BC) |
 | `core.sbatch` + `learner.sbatch` | 2 | sí (Learner) | Core en CPU y Learner en GPU, en nodos separados |
 

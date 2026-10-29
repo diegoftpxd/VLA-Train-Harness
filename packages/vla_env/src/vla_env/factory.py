@@ -13,7 +13,7 @@ from typing import Any
 from vla_common.environment import Environment
 
 # Grupo opcional de uv que necesita cada adaptador con dependencias.
-EXTRAS: dict[str, str] = {}
+EXTRAS = {"libero": "libero"}
 
 
 def build_environment(config: dict[str, Any]) -> Environment:
@@ -24,10 +24,14 @@ def build_environment(config: dict[str, Any]) -> Environment:
             from vla_env.reach import ReachEnvironment
 
             return ReachEnvironment(**opciones)
+        if tipo == "libero":
+            from vla_env.libero import LiberoEnvironment
+
+            return LiberoEnvironment(**opciones)
     except ImportError as error:
         extra = EXTRAS.get(tipo, tipo)
         raise ImportError(
             f"el ambiente {tipo!r} necesita dependencias opcionales: "
             f"`uv sync --extra {extra}` ({error})"
         ) from error
-    raise ValueError(f"tipo de ambiente desconocido: {tipo!r}. Disponibles: reach")
+    raise ValueError(f"tipo de ambiente desconocido: {tipo!r}. Disponibles: reach, libero")
