@@ -92,13 +92,17 @@ validación de la acción) sin cambiar el comportamiento que ve el Learner.
 | ENV-01…11 | `vla_common/testing/contracts/environment_contract.py` | Contrato completo (lista en `Test Environment.md`); lo heredan `TestFakeEnvironment` y `TestEnvironmentClient` en `vla_core/tests/test_environment.py`, sin cambios en esas clases | `fast` |
 | FAKE-01 | `vla_core/tests/test_environment.py` | Un chunk que alcanza la meta en la acción *k* devuelve la observación de esa acción, no la del final del chunk | `fast` |
 | FAKE-02 | idem | `info["success"]` es verdadero si y solo si se alcanzó la meta; un `truncated` tiene `success=False` | `fast` |
-| COM-01 | `vla_common/tests/test_environment.py` | `check_action_chunk` acepta la forma correcta y rechaza dimensión distinta, acción 2-D y chunk vacío | `fast` |
+| COM-01 | `vla_common/tests/test_common_environment.py` | `check_action_chunk` (y `resolve_task`) acepta la forma correcta y rechaza dimensión distinta, acción 2-D y chunk vacío | `fast` |
 | COM-02 | idem | `handle_environment` devuelve `spec` con `tasks` y una llamada desconocida da error | `fast` |
-| ARCH-ENV-01 | `vla_common/tests/test_arch.py` | Ningún módulo de `vla_common` (salvo `testing/`) importa `zmq`, `torch`, `vla_core`, `vla_learner` ni `vla_env` | `fast` |
-| CENV-01 | `vla_core/tests/test_core_gateway.py` | `step` con una acción de dimensión incorrecta es error y **ningún** ambiente avanza (paso y observación del `EpisodeManager` intactos), también si el chunk inválido es el segundo de la lista | `fast` |
+| ARCH-ENV-01 | `vla_common/tests/test_common_arch.py` | Ningún módulo de `vla_common` (salvo `testing/`) importa `zmq`, `torch`, `vla_core`, `vla_learner` ni `vla_env` | `fast` |
+| CENV-01 | `vla_core/tests/test_core_environment_rules.py` | `step` con una acción de dimensión incorrecta es error y **ningún** ambiente avanza (paso y observación del `EpisodeManager` intactos), también si el chunk inválido es el segundo de la lista | `fast` |
 | CENV-02 | idem, por la red | Lo mismo con `CoreClient` → `CoreServer`: llega como `RuntimeError` | `fast` |
-| CENV-03 | `vla_core/tests/test_core_dataset.py` | Un episodio `terminated` con `success=False` no se reinyecta (stub de ambiente que termina por fallo); los tests de ingesta existentes pasan sin tocar sus aserciones | `fast` |
-| CENV-04 | `vla_core/tests/test_failures.py` | Si el `spec` no responde en el pre-chequeo, el ambiente se marca no disponible y se invoca su parada | `fast` |
+| CENV-03 | idem | Un episodio `terminated` con `success=False` no se reinyecta (stub de ambiente que termina por fallo); los tests de ingesta existentes pasan sin tocar sus aserciones | `fast` |
+| CENV-04 | idem | Si el `spec` no responde en el pre-chequeo, el ambiente se marca no disponible y se invoca su parada | `fast` |
+
+Los tests de `vla_common` llevan el prefijo `test_common_`: pytest no distingue archivos de
+test con el mismo nombre en paquetes distintos (`vla_core` ya tiene `test_environment.py` y el
+Learner `test_arch.py`).
 
 ### Integración verificada en esta fase
 
