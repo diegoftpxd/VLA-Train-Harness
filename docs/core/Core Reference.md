@@ -34,6 +34,9 @@ La CLI carga el YAML, llama a `build_core(config)` para armar un `CoreServer`, l
 
 - **`fake.yaml`** — gateway real con todos los componentes fake en memoria (reach 2D, CPU). Es el Core que conduce la integración extremo a extremo con el Learner.
 - **`echo.yaml`** — backend estático de prueba: responde datos canónicos, sin componentes. Sirve para validar solo el transporte.
+- **`local.yaml`, `local_openvla.yaml`, `lerobot.yaml`, `openx.yaml`, `pi0_pusht.yaml`, `pi0_libero.yaml`** — gateway fake con un Dataset real (ver `docs/dataset/Dataset Design.md`).
+- **`env_reach.yaml`** — gateway fake con dos ambientes reales: procesos `vla-env` del ambiente `reach` (sus comentarios traen los comandos).
+- **`libero.yaml`** — gateway fake con dos procesos `vla-env` de LIBERO (evaluación de π0; ver `slurm/pi0_libero_eval.sbatch`).
 
 En código, el servidor se usa directo:
 
@@ -44,8 +47,10 @@ from vla_core.testing.fakes import make_fake_core
 server = CoreServer(make_fake_core(), "tcp://127.0.0.1:0")
 address = server.start()   # bindea y atiende en un hilo; devuelve el endpoint real
 ...
-server.stop()
+server.shutdown()          # stop() + cierra el backend (manda `close` a cada ambiente)
 ```
+
+`stop()` solo libera el socket; `shutdown()` además cierra el backend, y es lo que hace `vla-core` al salir. El `close` que manda el Learner por el protocolo **no** cierra el backend.
 
 El Learner se conecta con su `CoreClient` (lado cliente, en `vla_learner`); Core es el servidor.
 
@@ -191,7 +196,7 @@ Cablear WorldModel y Reward Model reales desde el YAML llega cuando esos compone
 
 ```
 packages/vla_core/src/vla_core/
-  server.py         # CoreServer (socket ROUTER)
+  server.py         # CoreServer (socket ROUTER); stop / shutdown
   core.py           # Core (el gateway)
   environments.py   # EnvironmentClient, EnvironmentRegistry (el contrato está en vla_common.environment)
   world_model.py    # WorldModel (ABC), WorldModelClient, LatentState
@@ -200,12 +205,12 @@ packages/vla_core/src/vla_core/
   dataset/          # Dataset/AppendableDataset (ABC), build_dataset, adaptadores local/lerobot/openx
   rpc.py            # RpcChannel (DEALER), RouterServer, make_handler
   errors.py         # CoreError y subclases
-  builder.py        # build_core(config)
+  builder.py        # build_core(config), build_environments(entries, timeouts)
   cli.py            # entrypoint vla-core
   testing/
     fakes.py          # FakeEnvironment/WorldModel/RewardModel/Dataset, FlakyEnvironment, SilentRouter, make_fake_core
     static_backend.py # StaticCoreBackend (eco de transporte)
-    contracts/        # suites de contrato reutilizables
+    contracts/        # suites de contrato reutilizables (la ENV vive en vla_common.testing.contracts)
 ```
 
 ## Pruebas
@@ -214,9 +219,9 @@ Marcas (en `pyproject.toml`, con `--strict-markers`):
 
 | Marca | Qué cubre | Comando |
 |---|---|---|
-| `fast` | Contratos de Core y de sus componentes con fakes CPU; configs de ejemplo | `uv run pytest -m fast` |
-| `distributed` | Varios Environment por la red atendidos por un Core | `uv run pytest -m distributed` |
-| `slow` | Integración extremo a extremo Learner↔Core, los tres flujos | `uv run pytest -m slow` |
+| `fast` | Contratos de Core y de sus componentes con fakes CPU; reglas de Core sobre los ambientes (CENV); configs de ejemplo (CFG); evaluación (EVAL) | `uv run pytest -m fast` |
+| `distributed` | Varios Environment por la red atendidos por un Core, incluidos procesos `vla-env` reales (DIST) | `uv run pytest -m distributed` |
+| `slow` | Integración extremo a extremo Learner↔Core, los tres flujos, con ambientes en memoria (E2E) y como procesos `vla-env` (E2E-ENV); EVAL-03 | `uv run pytest -m slow` |
 
 `uv run pytest` sin marca excluye `heavy`, `gpu` y `distributed`. Calidad: `uv run ruff check .`, `uv run ruff format --check .`, `uv run pyright`.
 

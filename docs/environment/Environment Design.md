@@ -293,6 +293,10 @@ Cambios chicos en `vla_core` (Core sigue siendo un gateway sin lógica de ambien
   timeouts: { environment_s: 30, retries: 1 }   # un reset de LIBERO tarda más que 5 s
   ```
 
+- **Al apagarse, Core cierra sus ambientes.** `CoreServer.shutdown()` (lo que hace
+  `vla-core` al salir) cierra el backend, y `Core.close()` manda `close` a cada proceso
+  `vla-env`. El `close` del Learner no lo hace: el ciclo de vida del servidor es de quien
+  lo levantó.
 - **El spec se pide perezosamente** (primera vez que se usa, como hoy, y queda en caché).
   Así el orden de arranque de los procesos no importa. "Declararse al registrarse" queda
   cumplido por la entrada en la config más el `spec` remoto.
@@ -372,6 +376,8 @@ Una discrepancia ahí no rompe ningún test, pero deja a la política ciega.
 | `test_env_server.py` | `EnvironmentServer` sirve un `ReachEnvironment` y el `EnvironmentClient` de Core pasa la suite ENV por la red | `fast` |
 | `test_env_cli.py` | La factory (`reach`, tipo desconocido), `--smoke`, `--save` y `--address` | `fast` |
 | `test_env_arch.py` | `vla_env` no importa `vla_core`, `vla_learner` ni `torch` (salvo perezoso) | `fast` |
+| `test_env_libero.py` | LIBERO sin simulador: mapeo (cuaternión, estado, rotación, tareas), `_LiberoSim` contra un simulador falso, `ensure_libero_config` y la factory sin el extra | `fast` |
+| `test_env_map_check.py` | `scripts/check_env_vs_dataset.py` (suite MAP) sobre datos sintéticos | `fast` |
 | `test_env_from_config.py` | Suite ENV contra el ambiente de `VLA_ENV_CONFIG` (cualquier adaptador) | `heavy` |
 
 **`vla_env` no depende de `vla_core` en runtime.** En los tests sí lo importa
@@ -434,7 +440,7 @@ resumen:
   (instrucción, observación, acción, observación siguiente) y **no** ve `info`. Un
   "detector de éxito del simulador" como Reward Model (lo que `Architecture.md` menciona)
   necesita que `ScoreItem` lleve `info["success"]`, o un Reward Model que lo infiera de
-  las imágenes. Se decide antes de hacer RL sobre LIBERO; la evaluación (fase 5) no lo
+  las imágenes. Se decide antes de hacer RL sobre LIBERO; la evaluación (fase 6) no lo
   necesita.
 - **`start_selector: reset` del Learner con ambientes declarados.** `ResetStartSelector` reinicia `env_id` inventados (`wm-start-1`, `wm-start-2`, …) y depende del autoregistro del registro fake. Contra un Core con `environments:` falla con `UnknownEnvironment`. Hoy se usan los inicios fijos de `data.env_ids`, que alcanzan los umbrales de E2E (E2E-ENV-02). Arreglarlo (que rote entre `data.env_ids`) es un cambio chico en el Learner, que `CLAUDE.md` reserva para cambios de protocolo: se decide aparte.
 - **Ambientes vectorizados.** Solo si una medición muestra que N procesos de un ambiente

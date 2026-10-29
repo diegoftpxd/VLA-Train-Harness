@@ -199,7 +199,7 @@ Ese wrapper es el único punto de traducción entre los formatos de vla-evaluati
 **Notas**
 
 - **La evaluación formal no usa Core ni sus ambientes.** El harness de evaluación trae sus propios ambientes y habla directo con el model server. Por eso no contradice la decisión 3: ocurre fuera de este harness.
-- **La tasa de éxito dentro del harness sí usa Core.** Para saber durante el desarrollo si una política cumple la tarea, el Learner conduce episodios contra los mismos Environment del RL, por Core, con `with_reward=False`, y cuenta `info["success"]`. Es una medición interna, no un benchmark publicable (ver `Environment Design.md`, decisión E8).
+- **La tasa de éxito dentro del harness sí usa Core.** Para saber durante el desarrollo si una política cumple la tarea, el Learner conduce episodios contra los mismos Environment del RL, por Core, con `with_reward=False`, y cuenta `info["success"]`. Es una medición interna, no un benchmark publicable (ver `Environment Design.md`, decisión E8). La hace `scripts/eval_success.py`; para π0 en LIBERO, `slurm/pi0_libero_eval.sbatch`.
 - **El modelo de evaluación no es el Learner.** El model server es un proceso nuevo que solo carga pesos; no necesita el optimizador ni nada del loop de entrenamiento.
 
 ## Flujos principales
@@ -236,4 +236,4 @@ Los tres modos de entrenamiento usan las mismas llamadas; cambia qué llama el L
 
 **Se decide en la implementación**
 
-- Timeouts y política de reintentos de Core para cada componente.
+- ~~Timeouts y política de reintentos de Core para cada componente.~~ Resuelto en `Core Design.md` ("Manejo de fallas").

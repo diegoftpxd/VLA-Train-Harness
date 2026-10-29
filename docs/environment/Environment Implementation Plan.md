@@ -29,15 +29,15 @@ desviarse, se actualiza el documento de diseño en el mismo commit.
 
 ## Mapa de fases
 
-| Fase | Qué entrega | Toca | Marca de cierre | Dónde corre |
-|---|---|---|---|---|
-| 1 | Contrato en `vla_common` y convenciones | `vla_common`, `vla_core` | `fast` + `slow` | local |
-| 2 | Paquete `vla_env` con el ambiente `reach` | `vla_env` (nuevo), raíz | `fast` | local |
-| 3 | Core con ambientes por config, contra procesos `vla-env` | `vla_core` | `fast` + `distributed` | local |
-| 4 | Learner → Core → `vla-env`, de punta a punta | tests, configs | `slow` | local |
-| 5 | Adaptador LIBERO | `vla_env`, slurm | `fast` + `heavy` | local + cluster |
-| 6 | Tasa de éxito de π0 en LIBERO | `scripts`, slurm | `fast` + `slow` + cluster | local + cluster |
-| — | Prerrequisitos de RL sobre LIBERO (solo decisiones) | — | — | — |
+| Fase | Qué entrega | Toca | Marca de cierre | Dónde corre | Estado |
+|---|---|---|---|---|---|
+| 1 | Contrato en `vla_common` y convenciones | `vla_common`, `vla_core` | `fast` + `slow` | local | ✅ `0dd45cb` |
+| 2 | Paquete `vla_env` con el ambiente `reach` | `vla_env` (nuevo), raíz | `fast` | local | ✅ `2330162` |
+| 3 | Core con ambientes por config, contra procesos `vla-env` | `vla_core` | `fast` + `distributed` | local | ✅ `ce3ca4f` |
+| 4 | Learner → Core → `vla-env`, de punta a punta | tests, configs | `slow` | local | ✅ `5a08a46` |
+| 5 | Adaptador LIBERO | `vla_env`, slurm | `fast` + `heavy` | local + cluster | 🟡 local `64a0a2e`; falta `libero_env_check.sbatch` |
+| 6 | Tasa de éxito de π0 en LIBERO | `scripts`, slurm | `fast` + `slow` + cluster | local + cluster | 🟡 local `8c08da5`; falta EVAL-04 |
+| — | Prerrequisitos de RL sobre LIBERO (solo decisiones) | — | — | — | abierto |
 
 Las fases 1 a 4 se cierran por completo en la máquina de desarrollo (CPU, sin pesos). Las
 fases 5 y 6 tienen una parte local (`fast`) y una de cluster (`heavy`/sbatch).

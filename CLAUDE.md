@@ -21,7 +21,7 @@ Se implementa siguiendo `docs/environment/Environment Implementation Plan.md`. A
 - 🟡 **Fase 5 (local hecha, falta el cluster):** `LiberoEnvironment` (`type: libero`, extra `libero` = `hf-libero`), mapeo en numpy (LIB-01…04, 08, 09 en `fast`), `ensure_libero_config` (evita el `input()` de LIBERO), `configs/env/libero.yaml`, `configs/core/libero.yaml`, `scripts/check_env_vs_dataset.py` (suite MAP) y el test `heavy` genérico `test_env_from_config.py`. **Pendiente:** correr `sbatch slurm/libero_env_check.sbatch` (smoke, ENV/SRVE contra LIBERO real y MAP contra `data/pi0_libero`).
 - 🟡 **Fase 6 (local hecha, falta el cluster):** `scripts/eval_success.py` (tasa de éxito por tarea, por Core, contando `info["success"]`; usa las estadísticas del checkpoint) y `slurm/pi0_libero_eval.sbatch`. Suite EVAL-01…03, 05 (`fast`/`slow`). **Pendiente:** EVAL-04, correr la evaluación de π0 en LIBERO en el cluster (después de la fase 5).
 
-Los documentos de Core marcan como *pendiente* lo que traen las fases siguientes.
+Todo lo local está cerrado y verificado (`fast`, `distributed`, `slow`). Lo único pendiente son las corridas de cluster de las fases 5 y 6, y las decisiones de "Prerrequisitos para RL sobre LIBERO" del plan.
 
 **Terminado — Core (`packages/vla_core`).** Las siete fases del plan: diseño y transporte (`CoreServer`/`dispatch_request`), componentes y clientes `DEALER` (Environment, WorldModel, Reward Model, Dataset, EpisodeStore) con sus fakes, el gateway `Core` (`reset`/`step`/`simulate`/`sample_supervised`/`get_episode`), el gancho de episodios exitosos, el manejo de fallas (timeouts, reconexión, parada de seguridad, multi-ambiente), la CLI `vla-core` con configs de ejemplo y la integración extremo a extremo con el Learner real. Pasa las suites de contrato (`fast`), `distributed` y la E2E (`slow`).
 
@@ -51,6 +51,7 @@ Si al implementar necesitas desviarte del diseño (una firma, un tipo, una clase
 **Dentro:**
 
 - **El proceso Core** (`packages/vla_core`): servidor ZeroMQ `ROUTER` que expone la interfaz del Learner; despacho de llamadas; registro de ambientes (`env_id`, disponibilidad, espacio de acciones y cámaras declarados al registrarse); estado por episodio (paso actual, observación anterior); agregación de recompensa (`with_reward`); servicio de datos supervisados desde el Dataset; almacén de episodios (`append`/`get`); manejo de fallas (timeouts, caídas, reintentos, parada de seguridad).
+- **El componente Environment** (`packages/vla_env`): la base `GymEnvironment`, los adaptadores (`reach`, `libero`), `EnvironmentServer` y la CLI `vla-env`. Su contrato y su protocolo viven en `vla_common`; ver `docs/environment/`.
 - **Clientes hacia abajo de Core**: cómo Core llama por ZeroMQ (`DEALER`) a Environment (`reset`/`step`/`close`), WorldModel (`encode`/`rollout`), Reward Model (`score`) y cómo accede al Dataset y al almacén de episodios.
 - **Herramientas de prueba de Core** (análogas a las del Learner): fakes en memoria y servidores ZeroMQ fake de Environment, WorldModel y Reward Model; un Dataset fake y un almacén de episodios de prueba; generadores de datos; y las suites de contrato en `testing/contracts/`.
 - **CLI** `vla-core` y configs YAML de ejemplo.
@@ -104,17 +105,22 @@ packages/
   vla_common/               # tipos compartidos, protocolo y contrato del Environment (SIN torch, SIN zmq)
   vla_env/                  # procesos Environment: GymEnvironment, adaptadores, EnvironmentServer, CLI vla-env (NO depende de vla_core)
   vla_learner/              # proceso Learner (TERMINADO)
-  vla_core/                 # proceso Core (FASE ACTUAL)
+  vla_core/                 # proceso Core (TERMINADO)
     src/vla_core/
-      server.py             # servidor ROUTER: recibe del Learner, despacha, responde
-      gateway.py            # lógica de Core: enruta, agrega recompensa, registra
-      registry.py           # registro de ambientes (env_id, disponibilidad, specs)
+      server.py             # CoreServer (ROUTER): recibe del Learner, despacha, responde; shutdown
+      core.py               # Core (gateway): enruta, valida acciones, agrega recompensa, registra
+      environments.py       # EnvironmentRegistry y EnvironmentClient (DEALER hacia vla-env)
+      world_model.py        # WorldModel (ABC) y su cliente
+      reward.py             # RewardModel (ABC), su cliente y RewardScorer
       episodes.py           # estado por episodio y almacén de episodios (append/get)
-      clients/              # clientes DEALER hacia Environment, WorldModel, Reward Model
-      dataset/              # Dataset dentro de Core (fake por ahora)
+      dataset/              # Dataset dentro de Core: fake, local, lerobot, openx
+      rpc.py                # RpcChannel (DEALER + timeout + reintentos), RouterServer
+      builder.py            # build_core, build_environments (bloques environments/timeouts)
       cli.py
       testing/              # fakes (Environment/WorldModel/RewardModel/Dataset), suites de contrato
-    tests/
+    tests/                  # conftest.py lanza procesos vla-env para distributed/slow
+scripts/                    # prepare_lerobot_local, check_env_vs_dataset (MAP), eval_success
+slurm/                      # sbatch del cluster (π0, chequeo de LIBERO, evaluación)
 ```
 
 `vla_common` existe porque Core y el Learner usan los mismos tipos y el mismo protocolo. **Nada de `vla_common` puede depender de `torch`.** Las suites de contrato de Core viven en `vla_core/src/vla_core/testing/contracts/`, no en `tests/`, porque implementaciones futuras (un Dataset real, un WorldModel real) las importan. La suite ENV es la excepción: vive en `vla_common/src/vla_common/testing/contracts/`, porque la importan `vla_core` y `vla_env`, y ninguno de los dos depende del otro.
@@ -161,13 +167,13 @@ Reglas:
 
 ## Orden de implementación
 
-Cada fase termina con `uv run pytest -m fast`, ruff y pyright en verde, y un commit. No empieces una fase con la anterior en rojo. El trabajo va en la rama `Core`.
+Cada fase termina con `uv run pytest -m fast`, ruff y pyright en verde, y un commit. No empieces una fase con la anterior en rojo. Core se hizo en la rama `Core`; el Environment va en la rama `Environment` con su propio plan (`docs/environment/Environment Implementation Plan.md`).
 
 1. ✅ **Diseño y base.** `docs/core/Core Design.md` y `docs/core/Test Core.md`. Paquete `vla_core` (CLI `vla-core`, sin torch). Servidor `ROUTER` que reutiliza `vla_common` y responde `ok`/`error`, con round-trips contra el `CoreClient` real. Suite SRV.
 2. ✅ **Componentes y clientes hacia abajo.** Interfaces que Core consume (Environment, WorldModel, Reward Model, Dataset, almacén de episodios) y sus clientes `DEALER`. Fakes en memoria y como servidores ZeroMQ. Registro de ambientes. Incluyó `EpisodeManager`/`EpisodeStore` (adelantados) y las suites ENV/WM/RM/DSET/STORE/EP.
 3. ✅ **Gateway Core: ciclo de episodios.** `Core.reset`, `Core.step` (enruta por ambiente, respeta la regla de episodio terminado, batchea `score` una vez, registra transiciones con `source="env"`) y `Core.get_episode`. Absorbió el `reset`/`step` que el plan tenía aparte. La suite CORE del Learner se reusa contra el Core real (incluye CORE-03, episodio terminado).
 4. ✅ **`simulate` sobre el WorldModel.** `Core.simulate` resuelve el inicio (observación o `(episode_id, step)`), `WorldModel.encode` + `rollout` (devuelve `StepResult` por chunk, con terminación), puntúa con el mismo Reward Model en una sola llamada. `rollout` se ajustó para devolver `StepResult` (ver `Core Design.md`). Suite SIM (directa y por la red).
-5. ✅ **Dataset supervisado.** `Core.sample_supervised(n, filters?)` delega en el Dataset (`source="dataset"`, acciones en unidades reales, filtro `task`). El gancho `Core.ingest_episode` reinyecta episodios exitosos (`terminated`) sobre `AppendableDataset` (`DatasetNotAppendable` si no lo es). Suite DSET a nivel de Core (incluye round-trip por la red).
+5. ✅ **Dataset supervisado.** `Core.sample_supervised(n, filters?)` delega en el Dataset (`source="dataset"`, acciones en unidades reales, filtro `task`). El gancho `Core.ingest_episode` reinyecta episodios exitosos (hoy por `info["success"]`, desde la fase 1 del Environment) sobre `AppendableDataset` (`DatasetNotAppendable` si no lo es). Suite DSET a nivel de Core (incluye round-trip por la red).
 6. ✅ **Fallas y robustez.** `RpcChannel` con timeout + reintentos + reconexión (`DownstreamTimeout`); `Core` escala la caída de un ambiente a `DownstreamUnavailable`, lo marca no disponible e invoca su parada de seguridad sin romper al resto; timeouts/reintentos por componente fijados y configurables (`Core Design.md`, "Manejo de fallas"). Suites FAIL (`fast`) y el test `distributed` (multi-ambiente por la red).
 7. ✅ **Integración extremo a extremo.** `vla-core` con configs de ejemplo (`configs/core/*.yaml`, validados por un test `fast`) y el Learner real conduciendo un Core real con fakes por ZeroMQ en los tres flujos. Suite E2E (`slow`): el entrenamiento avanza en supervisado, RL en ambiente y RL en world model.
 

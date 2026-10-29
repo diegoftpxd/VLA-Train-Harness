@@ -156,6 +156,34 @@ sbatch --dependency=after:${CORE_JID} slurm/learner.sbatch ${CORE_JID}
 El `--dependency=after` hace que el Learner arranque una vez que el Core empezó
 (no espera a que termine: el Core es un servidor de larga duración).
 
+### Chequeo del ambiente LIBERO (GPU para el render)
+
+Antes de evaluar o entrenar contra LIBERO, comprueba el ambiente real: arranca el
+simulador (`vla-env --smoke`), corre las suites ENV y SRVE contra él y lo compara con
+el dataset convertido (suite MAP: cámaras, estado, orientación, instrucciones). Usa su
+propio venv (`.venv-env`, extra `libero`) y escribe la config de LIBERO en `.libero/`
+(si falta, LIBERO la pediría por teclado y colgaría el job).
+
+```bash
+sbatch slurm/libero_env_check.sbatch
+DATA_DIR=data/pi0_libero STEPS=50 sbatch slurm/libero_env_check.sbatch
+```
+
+La salida del smoke lista las tareas del `spec`: son los nombres que pide `TASKS` abajo.
+
+### Tasa de éxito de π0 en LIBERO (GPU)
+
+Levanta en el nodo N procesos `vla-env` de LIBERO, un Core conectado a ellos y
+`scripts/eval_success.py` con el checkpoint, todos por sockets `ipc://` del job. Cuenta
+los episodios exitosos (`info["success"]`) por tarea y deja un JSON en `slurm/logs/`.
+Usa las estadísticas del normalizador guardadas en el checkpoint, no las recalcula.
+
+```bash
+TASKS="<tarea 1>|<tarea 2>" sbatch slurm/pi0_libero_eval.sbatch
+TASKS="..." CHECKPOINT=checkpoints/pi0_libero_bc/step_001000 N_ENVS=4 EPISODES=20 \
+    sbatch slurm/pi0_libero_eval.sbatch
+```
+
 ## Logs y artefactos
 
 - Los logs van a `slurm/logs/%x-%j.{out,err}` (nombre de job y JOBID).

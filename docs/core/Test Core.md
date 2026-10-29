@@ -10,7 +10,7 @@ Principios: todo corre en **CPU** con *fakes* livianos y deterministas; nada des
 |---|---|---|---|
 | **SRV** | Transporte: round-trip de cada llamada, sobre `ok`/`error`, wire bit a bit | 1 | `fast` |
 | **CORE** (reusada) | El Core real pasa el mismo contrato que `FakeCoreClient` y `CoreClient`+`FakeCoreServer` | 2–6 | `fast` |
-| **ENV** | Contrato de `Environment` (`reset`/`step`/`close`, specs) | 2 | `fast` |
+| **ENV** | Contrato de `Environment` (vive en `vla_common`; fuente de verdad en `../environment/Test Environment.md`) | 2 | `fast` |
 | **WM** | Contrato de `WorldModel` (`encode`/`rollout`) | 2 | `fast` |
 | **RM** | Contrato de `RewardModel` (`score` por batch) | 2 | `fast` |
 | **DSET** | Contrato de `Dataset` (`sample`, unidades reales, filtros) y de `AppendableDataset` (`add`); `Core.sample_supervised` y el gancho `ingest_episode` | 5 | `fast` |
@@ -20,6 +20,7 @@ Principios: todo corre en **CPU** con *fakes* livianos y deterministas; nada des
 | **SIM** | `Core.simulate`: rollout + score, `source="world_model"` | 5 | `fast` |
 | **FAIL** | Timeouts, caída/reconexión de un componente, reintentos, parada de seguridad; multi-ambiente en paralelo | 6 | `fast` + `distributed` |
 | **E2E** | Learner real conduciendo un Core real con fakes, los tres flujos | 7 | `slow` |
+| **CENV, CFG, DIST, E2E-ENV, EVAL** | Integración de Core con el componente Environment: validación de acciones, ambientes por config, procesos `vla-env` reales, E2E contra ellos y tasa de éxito. Definidas en `../environment/Test Environment.md` | Environment 1–6 | `fast` + `distributed` + `slow` |
 
 ## SRV — transporte (Fase 1, implementada)
 
