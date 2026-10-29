@@ -389,10 +389,12 @@ de LIBERO, conduciendo los ambientes por Core. Es el paso 3 de "Próximos pasos"
    - La lógica vive en `evaluate(policy, client, tasks, episodes_per_task, env_ids, seed)`,
      testeable sin la CLI.
 2. **`slurm/pi0_libero_eval.sbatch`**:
-   - procesos: N `vla-env` LIBERO (`.venv-env`), Core con `configs/core/libero.yaml`
-     (`.venv-core`) y el script con `--extra pi0` en la GPU;
-   - espera a que cada socket esté listo, reusando `common.sh`;
-   - variables: `CHECKPOINT`, `TASKS` y `EPISODES`.
+   - procesos: N `vla-env` LIBERO (`.venv-env`), Core (`.venv-core`) y el script con
+     `--extra pi0` en la GPU, todos por sockets `ipc://` del job (no puertos `tcp` fijos;
+     la config de Core se genera con esas direcciones);
+   - cada venv se sincroniza una vez y los procesos arrancan con `uv run --no-sync`, para
+     que N procesos no compitan por instalar el mismo venv;
+   - variables: `TASKS` (obligatoria), `CHECKPOINT`, `N_ENVS`, `EPISODES`, `SEED`.
 
 ### Tests
 
@@ -400,7 +402,8 @@ de LIBERO, conduciendo los ambientes por Core. Es el paso 3 de "Próximos pasos"
 |---|---|---|---|
 | EVAL-01 | `vla_core/tests/test_eval_success.py` | `evaluate` con una política tiny sin entrenar contra un Core fake por la red: devuelve una tasa en `[0, 1]` por tarea, cuenta por `success` (no por `terminated`) y reparte los episodios entre los `env_ids` | `fast` |
 | EVAL-02 | idem | Una tarea desconocida para el ambiente da un error claro, sin cuelgues | `fast` |
-| EVAL-03 | idem | Una política tiny entrenada con BC unas iteraciones tiene una tasa de éxito mayor que la sin entrenar, contra Core + procesos `vla-env reach` (fixture de la fase 4) | `slow` |
+| EVAL-03 | idem | Una política tiny entrenada con BC unas iteraciones tiene una tasa de éxito mayor que la sin entrenar, contra Core + procesos `vla-env reach` (`core_con_procesos` del `conftest.py`) | `slow` |
+| EVAL-05 | idem | La config de evaluación: `--core-address` pisa `core.address`, y con checkpoint `normalizer.stats: fit` pasa a `<checkpoint>/policy` (nunca se re-ajusta contra el dataset del Core de evaluación); error claro si faltan las estadísticas; sin checkpoint, el último `step_*` | `fast` |
 | EVAL-04 | sbatch | π0 entrenado en LIBERO (`slurm/pi0_bc.sbatch`) evaluado en un subconjunto de tareas; se registra la tasa por tarea | cluster |
 
 ### Cierre

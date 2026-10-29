@@ -12,45 +12,16 @@ Marcada ``slow``: levanta 16 procesos y entrena en CPU.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-from contextlib import contextmanager
-
 import numpy as np
 import pytest
-from conftest import lanzar_vla_env
+from conftest import ENV_IDS, core_con_procesos
 
 from vla_common.types import Action, ActionChunk
-from vla_core.builder import build_core
-from vla_core.server import CoreServer
 from vla_learner.data.core_client import CoreClient
 from vla_learner.learner import Learner
 from vla_learner.testing.evaluation import success_rate
 
 pytestmark = pytest.mark.slow
-
-N_AMBIENTES = 16
-ENV_IDS = [f"reach-{i}" for i in range(N_AMBIENTES)]
-
-
-@contextmanager
-def core_con_procesos(n: int = N_AMBIENTES) -> Iterator[CoreServer]:
-    """Core real (resto de componentes fake) conectado a ``n`` procesos ``vla-env``."""
-    with lanzar_vla_env(n) as procesos:
-        config = {
-            "server": {"address": "tcp://127.0.0.1:0"},
-            "backend": {"type": "fake"},
-            "environments": [
-                {"id": env_id, "address": address}
-                for env_id, (address, _) in zip(ENV_IDS, procesos, strict=False)
-            ],
-            "timeouts": {"environment_s": 5, "retries": 1},
-        }
-        server = build_core(config)
-        server.start()
-        try:
-            yield server
-        finally:
-            server.shutdown()
 
 
 def _policy(with_value: bool = False, init_log_std: float = -0.5) -> dict:
