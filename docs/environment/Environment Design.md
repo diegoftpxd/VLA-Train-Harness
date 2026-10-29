@@ -433,6 +433,7 @@ resumen:
   necesita que `ScoreItem` lleve `info["success"]`, o un Reward Model que lo infiera de
   las imágenes. Se decide antes de hacer RL sobre LIBERO; la evaluación (fase 5) no lo
   necesita.
+- **`start_selector: reset` del Learner con ambientes declarados.** `ResetStartSelector` reinicia `env_id` inventados (`wm-start-1`, `wm-start-2`, …) y depende del autoregistro del registro fake. Contra un Core con `environments:` falla con `UnknownEnvironment`. Hoy se usan los inicios fijos de `data.env_ids`, que alcanzan los umbrales de E2E (E2E-ENV-02). Arreglarlo (que rote entre `data.env_ids`) es un cambio chico en el Learner, que `CLAUDE.md` reserva para cambios de protocolo: se decide aparte.
 - **Ambientes vectorizados.** Solo si una medición muestra que N procesos de un ambiente
   no alcanzan (E4).
 - **Restos del proceso Dataset borrado.** `configs/core/supervised.yaml`,

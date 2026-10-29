@@ -273,7 +273,7 @@ de Core, y no cambia ni el Learner ni el protocolo.
 | ID | Qué verifica |
 |---|---|
 | E2E-ENV-01 | **RL en ambiente:** PPO tiny conducido por el `Learner` real, por `CoreClient`, contra Core + 2 procesos `vla-env reach`. Tras el entrenamiento, la tasa de éxito supera la línea base con los **mismos umbrales** que el flujo RL de `test_e2e.py` (REACH-02 garantiza que es la misma dinámica). |
-| E2E-ENV-02 | **RL en world model con inicios reales:** `world_model` con `start_selector: reset`. Los inicios salen de `vla-env` por Core y el rollout del `FakeWorldModel` (que lee `proprio = [pos, goal]`). El entrenamiento avanza con los umbrales del flujo WM de `test_e2e.py`. |
+| E2E-ENV-02 | **RL en world model con inicios reales:** los inicios salen de `vla-env` por Core (`reset` de los `env_ids` declarados) y el rollout del `FakeWorldModel` (que lee `proprio = [pos, goal]`). El entrenamiento avanza con los umbrales del flujo WM de `test_e2e.py`. **Desvío:** el plan decía `start_selector: reset`, pero ese selector del Learner inventa `env_id` nuevos (`wm-start-N`) y depende del autoregistro, que un Core con ambientes declarados no hace; se usan los inicios fijos de `env_ids`, que alcanzan los mismos umbrales. Ver "Decisiones abiertas" en `Environment Design.md`. |
 | E2E-ENV-03 | **Episodios y Dataset:** después de E2E-ENV-01, `get_episode` devuelve transiciones `source="env"` con `info["success"]`, y `ingest_episode` reinyecta exactamente los episodios exitosos en el `FakeDataset`, que `sample_supervised` sirve después. |
 
 ### Integración verificada

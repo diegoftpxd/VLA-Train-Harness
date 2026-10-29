@@ -66,4 +66,3 @@ def lanzar_vla_env(
         for _, proceso in procesos:
             proceso.kill()
             proceso.wait(timeout=10)
-
