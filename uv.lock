@@ -30,6 +30,7 @@ conflicts = [[
 members = [
     "vla-common",
     "vla-core",
+    "vla-env",
     "vla-learner",
     "vla-train-harness",
 ]
@@ -3586,6 +3587,26 @@ requires-dist = [
 provides-extras = ["lerobot", "openx"]
 
 [[package]]
+name = "vla-env"
+version = "0.1.0"
+source = { editable = "packages/vla_env" }
+dependencies = [
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-11-vla-learner-pi0'" },
+    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-11-vla-learner-openvla' or extra != 'extra-11-vla-learner-pi0'" },
+    { name = "pyyaml" },
+    { name = "pyzmq" },
+    { name = "vla-common" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy", specifier = ">=2.0" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
+    { name = "pyzmq", specifier = ">=27.2.0" },
+    { name = "vla-common", editable = "packages/vla_common" },
+]
+
+[[package]]
 name = "vla-learner"
 version = "0.1.0"
 source = { editable = "packages/vla_learner" }
@@ -3634,6 +3655,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "vla-common" },
     { name = "vla-core" },
+    { name = "vla-env" },
     { name = "vla-learner" },
 ]
 
@@ -3656,6 +3678,7 @@ dev = [
 requires-dist = [
     { name = "vla-common", editable = "packages/vla_common" },
     { name = "vla-core", editable = "packages/vla_core" },
+    { name = "vla-env", editable = "packages/vla_env" },
     { name = "vla-learner", editable = "packages/vla_learner" },
     { name = "vla-learner", extras = ["openvla"], marker = "extra == 'openvla'", editable = "packages/vla_learner" },
     { name = "vla-learner", extras = ["pi0"], marker = "extra == 'pi0'", editable = "packages/vla_learner" },

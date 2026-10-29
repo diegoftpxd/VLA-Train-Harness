@@ -7,6 +7,7 @@ dependencies = [
     "vla-common",
     "vla-learner",
     "vla-core",
+    "vla-env",
 ]
 
 # Expone el grupo opcional de vla-learner a nivel de workspace, para poder
@@ -26,6 +27,7 @@ members = ["packages/*"]
 vla-common = { workspace = true }
 vla-learner = { workspace = true }
 vla-core = { workspace = true }
+vla-env = { workspace = true }
 # PyTorch con CUDA 12.4 desde el índice oficial (ver CLAUDE.md).
 torch = [{ index = "pytorch-cu124" }]
 
@@ -55,6 +57,7 @@ testpaths = [
     "packages/vla_common/tests",
     "packages/vla_learner/tests",
     "packages/vla_core/tests",
+    "packages/vla_env/tests",
 ]
 
 [tool.ruff]
@@ -67,7 +70,7 @@ extend-exclude = ["docs"]
 select = ["E", "F", "I", "UP", "B"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["vla_common", "vla_learner", "vla_core"]
+known-first-party = ["vla_common", "vla_learner", "vla_core", "vla_env"]
 
 [tool.pyright]
 pythonVersion = "3.12"

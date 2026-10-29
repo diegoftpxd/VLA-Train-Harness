@@ -364,15 +364,15 @@ Una discrepancia ahí no rompe ningún test, pero deja a la política ciega.
 
 | Archivo (en `packages/vla_env/tests/`) | Qué prueba | Marca |
 |---|---|---|
-| `test_gym_environment.py` | Las reglas de la base, sobre `ReachEnvironment`: corte a mitad de chunk, `max_steps` en acciones, éxito, error de dimensión, `step` después de un final, `task` desconocida, `to_canonical_image` | `fast` |
-| `test_reach.py` | `ReachEnvironment` pasa la suite ENV en memoria | `fast` |
-| `test_factory.py` | `type: reach` construye; tipo desconocido da error; `libero` sin el extra da un `ImportError` claro | `fast` |
-| `test_server.py` | `EnvironmentServer` sirve un `ReachEnvironment` y el `EnvironmentClient` de Core pasa la suite ENV por la red | `fast` |
-| `test_cli.py` | `--smoke`, `--save` y `--address` | `fast` |
+| `test_env_gym.py` | Las reglas de la base, sobre un simulador de prueba que registra las acciones recibidas: corte a mitad de chunk, `max_steps` en acciones, éxito, error de dimensión, `step` después de un final, `task` desconocida, `to_canonical_image` | `fast` |
+| `test_env_reach.py` | `ReachEnvironment` pasa la suite ENV en memoria y reproduce la dinámica del fake | `fast` |
+| `test_env_server.py` | `EnvironmentServer` sirve un `ReachEnvironment` y el `EnvironmentClient` de Core pasa la suite ENV por la red | `fast` |
+| `test_env_cli.py` | La factory (`reach`, tipo desconocido), `--smoke`, `--save` y `--address` | `fast` |
+| `test_env_arch.py` | `vla_env` no importa `vla_core`, `vla_learner` ni `torch` (salvo perezoso) | `fast` |
 | `test_env_from_config.py` | Suite ENV contra el ambiente de `VLA_ENV_CONFIG` (cualquier adaptador) | `heavy` |
 
 **`vla_env` no depende de `vla_core` en runtime.** En los tests sí lo importa
-(`test_server.py` usa el `EnvironmentClient` real), igual que los tests de `vla_core` ya
+(`test_env_server.py` usa el `EnvironmentClient` real), igual que los tests de `vla_core` ya
 importan el `CoreClient` de `vla_learner`. Así se prueba el cliente real contra el
 servidor real sin escribir uno de mentira. El cruce con procesos separados se prueba en
 `vla_core` (tests `distributed`), que lanza `vla-env` como subproceso. El detalle con IDs
@@ -391,7 +391,7 @@ con casos genéricos que valen para cualquier ambiente:
   y recién ahí prueba `emergency_stop` y `close`, como pide `Test Core.md`.
 
 El corte a mitad de chunk no se puede forzar de forma genérica: lo prueban
-`test_gym_environment.py` y un test propio de `FakeEnvironment`.
+`test_env_gym.py` y un test propio de `FakeEnvironment` (FAKE-01).
 
 ## Plan por fases
 

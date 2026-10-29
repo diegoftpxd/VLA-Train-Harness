@@ -1,0 +1,13 @@
+# Proceso Environment con el ambiente de referencia `reach` (2D, sin dependencias).
+#
+#   uv run vla-env --config configs/env/reach.yaml                 # atiende a Core
+#   uv run vla-env --config configs/env/reach.yaml --address tcp://127.0.0.1:5602
+#   uv run vla-env --config configs/env/reach.yaml --smoke 20      # prueba local, sin red
+#
+# Es la plantilla para un ambiente nuevo: ver docs/environment/Environment Design.md
+# ("Cómo agregar un ambiente nuevo") y vla_env/reach.py.
+server: { address: "tcp://127.0.0.1:5601" }
+environment:
+  type: reach
+  max_steps: 20 # acciones de bajo nivel por episodio
+  smoke_action: [0.05, 0.05]

@@ -143,15 +143,17 @@ ambiente sin Core.
    - `action_dim = 2`, `tasks = ["reach the goal"]`;
    - mismos `BOUND` y `THRESHOLD`.
 
-   Diferencias: `max_steps` en acciones (por defecto 20) y una imagen que codifica la
-   posición (no ceros), para que ENV-09 pruebe algo real. El docstring es la plantilla
-   que se copia para agregar un simulador.
+   Diferencia: `max_steps` cuenta acciones (por defecto 20). La imagen es negra, como la
+   del fake: el backbone tiny del Learner aplana la imagen junto al `proprio`, así que
+   dibujar la posición cambiaría el aprendizaje y la E2E de la fase 4 dejaría de ser
+   comparable. Igual pasa por `to_canonical_image`: el simulador la entrega en HWC
+   `uint8`. El docstring es la plantilla que se copia para agregar un simulador.
 4. **`vla_env/server.py`**: `EnvironmentServer(env, address)` con `start`/`stop` y
    context manager: un loop `ROUTER` que llama a `handle_environment` con el sobre
    `ok`/`error`.
-5. **`vla_env/factory.py`**: `build_environment(config)` con `reach` y la rama `libero`
-   (import perezoso; el adaptador llega en la fase 5). Sin el extra, `ImportError` con
-   `uv sync --extra libero`.
+5. **`vla_env/factory.py`**: `build_environment(config)` con `reach`. Si un import
+   perezoso falla, da un `ImportError` con el `uv sync --extra ...` que falta. La rama
+   `libero` entra en la fase 5, junto con su módulo (antes, pyright no la resolvería).
 6. **`vla_env/cli.py`**:
    - Modo servidor por defecto; `--address` pisa `server.address`; Ctrl-C hace
      `stop()` + `env.close()`.
@@ -166,9 +168,13 @@ ambiente sin Core.
 
 ### Tests (`packages/vla_env/tests/`, todos `fast`)
 
+Los archivos llevan el prefijo `test_env_`: pytest no distingue dos archivos de test con el
+mismo nombre en paquetes distintos (`vla_core` ya tiene `test_server.py`, el Learner `test_arch.py`).
+
+
 | ID | Archivo | Qué verifica |
 |---|---|---|
-| GYM-01 | `test_gym_environment.py` | Corte a mitad de chunk: el resultado es el de la acción que terminó y las acciones siguientes no llegan al simulador (el sim de prueba cuenta llamadas) |
+| GYM-01 | `test_env_gym.py` | Corte a mitad de chunk: el resultado es el de la acción que terminó y las acciones siguientes no llegan al simulador (el sim de prueba cuenta llamadas) |
 | GYM-02 | idem | `max_steps` en acciones: un chunk que cruza el límite se corta ahí y da `truncated=True`, `terminated=False` |
 | GYM-03 | idem | `info["is_success"]` del simulador → `terminated=True` y `success=True`, aunque el sim no marque `terminated` |
 | GYM-04 | idem | La recompensa del simulador se ignora: `reward is None` |
@@ -176,13 +182,13 @@ ambiente sin Core.
 | GYM-06 | idem | Una acción mal dimensionada es error y el simulador no recibe ninguna acción del chunk |
 | GYM-07 | idem | `reset(task=None)` usa `tasks[0]`; una tarea desconocida es error; `_make` recibe la tarea pedida |
 | GYM-08 | idem | `to_canonical_image`: HWC `uint8` → CHW `float32` en `[0, 1]`; CHW `float` se respeta; una forma sin 3 canales es error |
-| REACH-01 | `test_reach.py` | `ReachEnvironment` pasa la suite ENV (ENV-01…11) en memoria |
-| ARCH-ENV-02/03 | `test_arch.py` | `vla_env/src` no importa `vla_core`, `vla_learner` ni `torch` |
+| REACH-01 | `test_env_reach.py` | `ReachEnvironment` pasa la suite ENV (ENV-01…11) en memoria |
+| ARCH-ENV-02/03 | `test_env_arch.py` | `vla_env/src` no importa `vla_core`, `vla_learner` ni `torch` |
 | REACH-02 | idem | Con `chunk_size = 1` reproduce la trayectoria del `FakeEnvironment` para la misma semilla y acciones (mismo `proprio`). Es lo que garantiza que las fases 3 y 4 midan lo mismo que la E2E actual. Se implementa replicando la fórmula, sin importar `vla_core` |
-| FACT-01…03 | `test_factory.py` | `reach` se construye; un tipo desconocido da error; `libero` sin el extra da un `ImportError` que nombra `uv sync --extra libero` (se fuerza con `monkeypatch` sobre `sys.modules`, así el test no depende de lo instalado) |
-| SRVE-01 | `test_server.py` | `EnvironmentServer(ReachEnvironment)` + `EnvironmentClient` de `vla_core` pasan la suite ENV por la red |
+| FACT-01/02 | `test_env_cli.py` | `reach` se construye desde el YAML; un tipo desconocido da error. FACT-03 (`libero` sin el extra) pasa a la fase 5 |
+| SRVE-01 | `test_env_server.py` | `EnvironmentServer(ReachEnvironment)` + `EnvironmentClient` de `vla_core` pasan la suite ENV por la red |
 | SRVE-02 | idem | Un error del adaptador (tarea desconocida) vuelve como `{ok: False}` y el cliente levanta error; el servidor sigue atendiendo |
-| CLI-01 | `test_cli.py` | `smoke(env, 5, ...)` sobre `configs/env/reach.yaml` devuelve un reporte con el spec, las formas y los tiempos; `main(["--config", ..., "--smoke", "5"])` termina con código 0 |
+| CLI-01 | `test_env_cli.py` | `smoke(env, 5, ...)` sobre `configs/env/reach.yaml` devuelve un reporte con el spec, las formas y los tiempos; `main(["--config", ..., "--smoke", "5"])` termina con código 0 |
 | CLI-02 | idem | `--save` escribe un `npz` con una clave por cámara y el `proprio` |
 | CLI-03 | idem | `build_server` respeta `--address` por sobre `server.address` |
 
