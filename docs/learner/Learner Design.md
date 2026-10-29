@@ -316,6 +316,19 @@ Primer adaptador de un modelo real (implementado a pedido; antes estaba fuera de
 - **Fine-tuning parcial (`freeze_except`).** Implementa la decisión de "Congelar y LoRA": `freeze_except(trainable)` deja `requires_grad=True` solo en los parámetros cuyo nombre contenga alguno de los substrings dados (p. ej. `["lm_head"]` para entrenar únicamente la proyección de salida) y congela el resto. `trainable_parameters()` (heredado) devuelve entonces solo esa parte, así que ni el algoritmo ni el optimizador se enteran. Lo invoca el factory cuando el config trae `policy.freeze: {trainable: [...]}`; lanza `ValueError` si ningún parámetro coincide. Recorta la memoria de gradientes/optimizador, pero los pesos congelados igual se cargan (OpenVLA-7B sigue necesitando el cluster). LoRA todavía no está implementado para OpenVLA.
 - **Dependencias e integración.** `transformers`/`timm`/`tokenizers` van en el grupo opcional `openvla` (pin `transformers==4.40.1`, que es lo que espera el código remoto de OpenVLA). El adaptador importa `transformers` solo en `from_pretrained`, así que el resto del harness no depende del grupo. Se registra como `policy: {type: openvla}` (factory perezosa). Ejemplo de inferencia en `examples/openvla_smoke.py` y config de BC con fine-tuning parcial en `configs/openvla_bc.yaml`, servido por `configs/core/local_openvla.yaml` (dataset `local` con cámara `primary` y acciones de 7 dims). Los pesos reales (~16 GB) no caben en la GPU de desarrollo: se corre en el cluster, y los tests de contrato con pesos reales irían marcados `heavy`.
 
+### Adaptador `Pi0Policy`
+
+π0 completo (PaliGemma-3B + *action expert*, flow matching) cargado desde Hugging Face vía LeRobot 0.4.4 (`lerobot/pi0_base`). Igual que OpenVLA, no se separa en backbone + cabeza: implementa `VLAPolicy` directo en `policy/adapters/pi0.py`, y todo lo específico de LeRobot queda en el envoltorio `_LeRobotPi0Model`.
+
+- **Capacidades:** ninguna (flow matching no da log-prob tratable). Solo **BC**. `chunk_size = n_action_steps` (50). `action_dim` es el del dataset (p. ej. 2 en pusht), tomado del normalizador de acciones; sin normalizador, el `max_action_dim` padeado de π0 (32).
+- **Por qué normaliza el adaptador.** En LeRobot 0.4.4 el `PI0Policy` no normaliza ni tokeniza: lo hace su pipeline de procesadores (`make_pi0_pre_post_processors`), que el adaptador no usa porque arma el batch él mismo. Si el adaptador no normalizara, π0 entrenaría en unidades crudas (en pusht, píxeles ~70–450). Por eso aplica la regla de "Normalización de acciones" con `ActionNormalizer`, en el mismo modo que LeRobot usa para π0 (`mean_std` en estado y acción):
+  - **Acciones**, en la política: `imitation_loss` normaliza antes de la loss; `act` se queda con las `D` dims reales de las 32 que predice π0 y desnormaliza.
+  - **Propiocepción**, en `Pi0Processor` (ver `ObservationProcessor`), con su propio `ActionNormalizer`.
+  - Los dos normalizadores son submódulos de la política: sus buffers viajan en el `state_dict` del checkpoint. `save_pretrained` además los escribe en `action_stats.pt` y `state_stats.pt`, para reusarlos con `normalizer.stats: <directorio>`.
+  - **Estadísticas:** `pi0_base` no trae las del dataset de destino (opción 1 de abajo no aplica), así que salen del config: `normalizer: {mode: mean_std, stats: fit | <directorio>, fit_samples: 256}`. Con `normalizer` sin `stats`, el builder lo rechaza. Sin `normalizer`, la política es la identidad: sirve para los tests con un modelo falso, no para entrenar.
+- **Tokenizer.** El de PaliGemma (`google/paligemma-3b-pt-224`, configurable con `policy.tokenizer`, que acepta también una ruta local). Lo carga `_LeRobotPi0Model` antes de los pesos, para fallar rápido. Es un repo de HF con **acceso restringido**: si no hay sesión, `load_paligemma_tokenizer` lanza un error que explica qué hacer, en vez de caer al placeholder de los tests (sin el tokenizer real, π0 no ve la instrucción). `Pi0Processor` replica el pipeline de LeRobot: la instrucción termina en `"\n"` (`Pi0NewLineProcessor`) y se rellena a la derecha hasta `tokenizer_max_length` (48, de la config de π0).
+- **Dependencias.** `lerobot` y `transformers` van en el grupo opcional `pi0` y se importan solo en `from_pretrained`. Se registra como `policy: {type: pi0}`. Config de ejemplo: `configs/pi0_pusht_bc.yaml`, servido por `configs/core/pi0_pusht.yaml` (ver `docs/dataset/Pi0 E2E Plan.md`).
+
 ### `ObservationProcessor`
 
 Convierte observaciones del formato común al formato del modelo. Es propio de cada modelo: tamaño de imagen, normalización de píxeles, tokenizador de la instrucción, qué cámaras usa. También es aquí donde se normaliza la propiocepción, si el modelo la usa.
@@ -364,6 +377,7 @@ class ActionNormalizer(nn.Module):
 
     def normalize(self, actions: Tensor, embodiment: str) -> Tensor: ...
     def denormalize(self, actions: Tensor, embodiment: str) -> Tensor: ...
+    def dim(self, embodiment: str | None = None) -> int: ...   # D que normaliza
 
     @classmethod
     def from_file(cls, path: Path) -> "ActionNormalizer": ...
@@ -371,15 +385,21 @@ class ActionNormalizer(nn.Module):
     @classmethod
     def fit(cls, samples: list[tuple[Observation, ActionChunk]], mode: str) -> "ActionNormalizer":
         """Calcula estadísticas a partir de muestras del Dataset (vía sample_supervised)."""
+
+    @classmethod
+    def from_values(cls, values: Array, mode: str) -> "ActionNormalizer":
+        """Estadísticas de cualquier vector [N, D] en unidades reales (p. ej. la propiocepción)."""
 ```
 
-Las estadísticas se registran como buffers del módulo, así que se guardan y cargan junto con los pesos.
+Las estadísticas se registran como buffers del módulo, así que se guardan y cargan junto con los pesos. `normalize`/`denormalize` llevan las estadísticas al device de la entrada, para que un procesador pueda normalizar en CPU aunque la política (dueña de los buffers) esté en GPU.
 
 De dónde salen las estadísticas, en orden de preferencia:
 
 1. Las que trae el modelo preentrenado, si se entrena con el mismo tipo de datos.
 2. Un archivo de estadísticas indicado en la configuración.
 3. Calculadas al arrancar con `ActionNormalizer.fit`, a partir de una muestra del Dataset pedida a Core.
+
+En el config, las opciones 2 y 3 son `policy.normalizer.stats`. Las resuelve el builder antes de construir la política, porque es quien tiene el cliente de Core: `stats: fit` pide `fit_samples` pares (256 por defecto) con `sample_supervised` y arma un normalizador de acciones (`fit`) y otro de propiocepción (`from_values`); `stats: <directorio>` carga `action_stats.pt` y, si existe, `state_stats.pt`. La factory recibe ambos ya armados (`normalizer.action`, `normalizer.state`). `ComposedPolicy` usa el de acciones; sin `stats` sigue con uno unitario.
 
 ## Algoritmos
 

@@ -1,0 +1,20 @@
+# Core sirviendo el corpus pusht (LeRobot) convertido a formato `local`, para la
+# prueba E2E de dos procesos con π0 (ver docs/dataset/Pi0 E2E Plan.md).
+#
+# Primero convertí el corpus una vez (necesita el extra `pi0` = lerobot 0.4.4):
+#     uv run --extra pi0 python -I scripts/prepare_lerobot_local.py
+# Eso escribe data/pi0_pusht/ en formato `local`. Después Core corre con la BASE
+# liviana de vla_core (ZeroMQ + numpy, SIN torch ni lerobot):
+#     uv run vla-core --config configs/core/pi0_pusht.yaml
+#
+# demo_chunk_size: 50 = n_action_steps de π0: cada episodio local (de 50 pasos,
+# garantizado por el troceo del script) se sirve como UN par con una chunk de 50
+# acciones. La cámara canónica debe llamarse observation.images.base_0_rgb, que es
+# lo que exige el procesador de π0 (las otras dos cámaras las enmascara el modelo).
+server: { address: "tcp://127.0.0.1:5555" }
+backend: { type: fake }          # Environment/WorldModel/RewardModel no se tocan en supervisado
+dataset:
+  type: local
+  path: data/pi0_pusht
+  cameras: { observation.images.base_0_rgb: observation.images.base_0_rgb } # canónico -> clave en el npz
+  demo_chunk_size: 50

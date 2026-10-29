@@ -13,6 +13,7 @@ dependencies = [
 # instalarlo desde la raíz con `uv sync --extra openvla`.
 [project.optional-dependencies]
 openvla = ["vla-learner[openvla]"]
+pi0 = ["vla-learner[pi0]"]
 
 # El root es un workspace virtual: no se empaqueta, solo agrupa los paquetes.
 [tool.uv]

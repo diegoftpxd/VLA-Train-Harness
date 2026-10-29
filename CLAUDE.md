@@ -4,6 +4,8 @@ Harness para entrenar modelos VLA (vision-language-action) con aprendizaje super
 
 ## Estado del proyecto
 
+**En curso — Dataset y π0 (rama `Dataset`).** Adaptadores de dataset (`fake`, `local`, `lerobot`, `openx`; ver `docs/dataset/Dataset Design.md`), el adaptador `Pi0Policy` en el Learner y la prueba E2E de dos procesos de `docs/dataset/Pi0 E2E Plan.md`. Esa prueba **pasó en el cluster** (job 35206): Core sirve `pusht` convertido a `local` (`scripts/prepare_lerobot_local.py`) y el Learner entrena π0 con BC, con `fm_mse`/`grad_norm` finitos en los 10 pasos. Se corre con `slurm/pi0_bc.sbatch` (ver `slurm/README.md`). Después de esa corrida, `Pi0Policy` pasó a normalizar acciones y estado (`mean_std`, estadísticas con `normalizer.stats: fit`, dentro de la política como pide `Learner Design.md`) y a cargar el tokenizer de PaliGemma. Está cubierto por la suite `fast` y **verificado en el cluster** (job 35229): `fm_mse` bajó de ~2500–7500 a ~0,06–0,13 y `grad_norm` de ~500–1000 a ~1–3. El tokenizer está en un repo de HF con acceso restringido: hay que autenticarse con `HF_HOME=.hf_cache` (ver `slurm/README.md`). **Segundo dataset real: LIBERO** (`lerobot/libero`, demos exitosas, 40 tareas, 2 cámaras): se convierte con `scripts/prepare_lerobot_local.py` (generalizado desde el script de pusht) y π0 entrenó sobre 200 episodios en el job 35231 (`fm_mse` 0,11–0,28). El warning `Could not remap state dict keys` es inofensivo: el `embed_tokens` que reporta faltante está atado a `lm_head` y queda cargado (job 35263, `slurm/pi0_check_embed.sbatch`). Lo que sigue (BC real sobre LIBERO, luego un Environment de LIBERO para evaluar) está en "Próximos pasos" del plan.
+
 **Terminado — Core (`packages/vla_core`).** Las siete fases del plan: diseño y transporte (`CoreServer`/`dispatch_request`), componentes y clientes `DEALER` (Environment, WorldModel, Reward Model, Dataset, EpisodeStore) con sus fakes, el gateway `Core` (`reset`/`step`/`simulate`/`sample_supervised`/`get_episode`), el gancho de episodios exitosos, el manejo de fallas (timeouts, reconexión, parada de seguridad, multi-ambiente), la CLI `vla-core` con configs de ejemplo y la integración extremo a extremo con el Learner real. Pasa las suites de contrato (`fast`), `distributed` y la E2E (`slow`).
 
 **Terminado — Learner (`packages/vla_learner`).** Todas las clases de `Learner Design.md`: interfaces del modelo, `ComposedPolicy`, cabezas, normalizador, `BehaviorCloning`, `PPO`, `GRPO`, estimadores de ventaja, fuentes de datos, `CoreClient`, infraestructura, `Learner`, `Registry`, CLI, y el adaptador real `OpenVLAPolicy`. Pasa sus suites de contrato (`fast`) y los tests de aprendizaje (`slow`). **No se reescribe**; se toca solo si Core obliga a cambiar el protocolo.
@@ -36,17 +38,13 @@ Si al implementar necesitas desviarte del diseño (una firma, un tipo, una clase
 
 **Fuera (no implementar sin que se pida):**
 
-- **Environment, WorldModel y Reward Model reales** (simuladores, robot, pesos reales, VLM juez). Se reemplazan por fakes CPU. El WorldModel se asume preentrenado y congelado, y su entrenamiento es fuera de este harness.
-- **Los datos de los corpus reales** (Open-X, LeRobot, …). Los **adaptadores** ya existen y están dentro de alcance: `local` (layout on-disk, sin dependencias, `fast`), `lerobot` (grupo opcional uv `lerobot`, `heavy`) y `openx` (Open-X Embodiment / RLDS, grupo opcional uv `openx`, `heavy`), todos detrás de la factory `build_dataset` que mantiene a Core agnóstico del formato (ver `docs/dataset/Dataset Design.md`). Lo que queda fuera es **el corpus en sí**: el harness no incluye ni descarga los datos ni mete las dependencias pesadas al venv base; cada corpus aporta los suyos (o un snapshot local).
-- `EvalModelServer` / `PredictModelServer` y todo lo de evaluación: es una etapa posterior, fuera de este harness (ver `Architecture.md`, sección Evaluación).
-- Adaptadores de modelos reales nuevos del Learner (π0, Octo), `DiffusionActionHead` / `FlowMatchingActionHead`. El adaptador `OpenVLAPolicy` ya existe; los demás no se escriben sin que se pidan.
 - Memoria compartida para imágenes, migración a Ray o gRPC: solo si una medición lo justifica (ver `Architecture.md`).
 
 ## Hardware: Core es CPU; cuidado con los pesos
 
 - **Core no tiene GPU ni modelo.** Todo su código corre en CPU y solo enruta mensajes y arrays de numpy. `vla_core` **no depende de `torch`** (igual que `vla_common`).
-- Los componentes con GPU (WorldModel, Reward Model) son procesos aparte y están fuera de alcance: en los tests se reemplazan por **fakes CPU** livianos, deterministas y con arrays pequeños.
-- La máquina de desarrollo tiene una **RTX 2050 con 4 GB de VRAM**. **Nunca descargues ni cargues pesos de modelos reales** (OpenVLA 7B, PaliGemma 3B, π0, world models, VLM jueces). No caben y no hacen falta para construir Core.
+- Los componentes con GPU (WorldModel, Reward Model) son procesos aparte.
+- La máquina de desarrollo (si estás en windows) tiene una **RTX 2050 con 4 GB de VRAM**. **Nunca descargues ni cargues pesos de modelos reales** (OpenVLA 7B, PaliGemma 3B, π0, world models, VLM jueces). No caben y no hacen falta para construir funcionalidades.
 - Un test no debe usar más de ~2 GB de VRAM y el dispositivo por defecto es **CPU**. La GPU solo en tests marcados `gpu`.
 
 ## Reproducibilidad con uv

@@ -16,6 +16,12 @@ Cada par ``(Observation, ActionChunk)`` sale de agrupar ``demo_chunk_size`` paso
 consecutivos (sin solape): la observación es el primer paso del grupo y el chunk
 son sus acciones, en **unidades reales** y ``float32``, sin normalizar. Si el
 episodio termina a mitad de grupo, el chunk se corta ahí.
+
+Las imágenes salen siempre ``float32``. En disco pueden ir en ``float32`` (se
+entregan tal cual) o en ``uint8`` 0–255 (4× menos espacio; se entregan en
+``[0, 1]``). En memoria se guarda **solo el frame de cada par**, convertido y
+copiado: con corpus grandes (LIBERO) retener los episodios completos en ``float32``
+ocuparía cientos de GB.
 """
 
 from __future__ import annotations
@@ -30,6 +36,16 @@ from vla_core.dataset.base import Dataset
 
 # Claves de ``data.npz`` que no son cámaras.
 _NO_CAMARA = frozenset({"proprio", "actions"})
+
+
+def _frame(imagen: np.ndarray) -> np.ndarray:
+    """Un frame como ``float32`` **propio** (no una vista del episodio entero).
+
+    ``uint8`` (0–255) se lleva a ``[0, 1]``; ``float`` se entrega tal cual.
+    """
+    if imagen.dtype == np.uint8:
+        return imagen.astype(np.float32) / np.float32(255.0)
+    return np.array(imagen, dtype=np.float32, copy=True)
 
 
 class LocalDataset(Dataset):
@@ -84,9 +100,7 @@ class LocalDataset(Dataset):
         proprio = np.asarray(data["proprio"], dtype=np.float32)
         actions = np.asarray(data["actions"], dtype=np.float32)
         camaras = self._nombres_camara(data)
-        imagenes = {
-            nombre: np.asarray(data[clave], dtype=np.float32) for nombre, clave in camaras.items()
-        }
+        imagenes = {nombre: np.asarray(data[clave]) for nombre, clave in camaras.items()}
 
         t = actions.shape[0]
         if proprio.shape[0] != t or any(arr.shape[0] != t for arr in imagenes.values()):
@@ -96,8 +110,8 @@ class LocalDataset(Dataset):
         for inicio in range(0, t, self._demo_chunk_size):
             fin = min(inicio + self._demo_chunk_size, t)
             obs = Observation(
-                images={nombre: arr[inicio] for nombre, arr in imagenes.items()},
-                proprio=proprio[inicio],
+                images={nombre: _frame(arr[inicio]) for nombre, arr in imagenes.items()},
+                proprio=proprio[inicio].copy(),
                 instruction=instruction,
             )
             chunk: ActionChunk = [Action(values=actions[i]) for i in range(inicio, fin)]

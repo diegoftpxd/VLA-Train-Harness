@@ -1,0 +1,25 @@
+# Core sirviendo LIBERO (lerobot/libero) convertido a formato `local`, para la
+# prueba E2E de dos procesos con π0 (ver docs/dataset/Pi0 E2E Plan.md).
+#
+# Primero convertí el corpus una vez (necesita el extra `pi0` = lerobot 0.4.4):
+#     uv run --extra pi0 python -I scripts/prepare_lerobot_local.py \
+#         --repo-id lerobot/libero --out data/pi0_libero --max-episodes 200 \
+#         --camera observation.images.image=observation.images.base_0_rgb \
+#         --camera observation.images.image2=observation.images.left_wrist_0_rgb
+# Eso escribe data/pi0_libero/ en formato `local`. Después Core corre con la BASE
+# liviana de vla_core (ZeroMQ + numpy, SIN torch ni lerobot):
+#     uv run vla-core --config configs/core/pi0_libero.yaml
+#
+# Dos cámaras: la vista general de LIBERO va a base_0_rgb y la de muñeca a
+# left_wrist_0_rgb, dos de las tres que espera π0 (la tercera la enmascara el
+# modelo). Cada episodio trae la instrucción de su tarea (40 tareas).
+# demo_chunk_size: 50 = n_action_steps de π0 (un par por episodio local de 50 pasos).
+server: { address: "tcp://127.0.0.1:5555" }
+backend: { type: fake }          # Environment/WorldModel/RewardModel no se tocan en supervisado
+dataset:
+  type: local
+  path: data/pi0_libero
+  cameras:                       # canónico -> clave en el npz
+    observation.images.base_0_rgb: observation.images.base_0_rgb
+    observation.images.left_wrist_0_rgb: observation.images.left_wrist_0_rgb
+  demo_chunk_size: 50

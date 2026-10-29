@@ -1,0 +1,49 @@
+# Fine-tuning del π0 COMPLETO con Behavior Cloning. Pensado para el cluster.
+#
+#   uv sync --extra pi0
+#   uv run vla-core --config configs/core/local_openvla.yaml   # terminal 1 (demos reales)
+#   uv run vla-learner --config configs/pi0_bc.yaml            # terminal 2
+#
+# Carga los pesos reales de π0 desde Hugging Face vía LeRobot (~7 GB en bf16,
+# PaliGemma-3B + action expert): NO cabe en la RTX 2050 de desarrollo. π0 es un
+# VLA de flow matching, sin log-prob → solo BC (no PPO/GRPO). Necesita un Core
+# sirviendo demostraciones compatibles: imágenes RGB en la cámara `primary` y
+# acciones de 7 dims en unidades reales (el adaptador y LeRobot normalizan
+# adentro). El FakeCoreClient (acciones toy de 2 dims) NO sirve acá.
+#
+# `lerobot` vive en el grupo opcional `pi0`: no se instala en la base ni interfiere
+# con otros modelos (OpenVLA, composed, flow_matching). El adaptador lo importa
+# solo al cargar pesos.
+seed: 0
+
+device: cuda
+
+# Core real por ZeroMQ (ver docs/Architecture.md). Reemplazá la dirección.
+core: {type: zmq, address: "tcp://localhost:5555", timeout_s: 60}
+
+policy:
+  type: pi0
+  pretrained: lerobot/pi0_base   # id de HF o ruta local a un checkpoint de LeRobot
+  cameras: [primary]
+  image_size: 224
+  torch_dtype: bfloat16
+  # Fine-tuning parcial opcional: entrenar solo el action expert y congelar el
+  # backbone PaliGemma recorta memoria de gradientes/optimizador. Quitá el bloque
+  # para fine-tuning completo.
+  freeze: {trainable: [action]}
+
+# π0 no tiene cabeza de valor ni log-prob: sirve para BC, no para PPO/GRPO.
+algorithm: {type: bc}
+
+# Demostraciones supervisadas desde el Core.
+data: {type: supervised, batch_size: 8}
+
+# lr bajo, típico de fine-tuning de un VLA grande.
+optimizer: {name: adamw, lr: 0.00005, grad_clip: 1.0, scheduler: null, precision: bf16}
+
+checkpoint: {directory: checkpoints/pi0_bc, every: 200, keep_last: 2}
+
+# El embodiment debe tener la cámara que el procesador de π0 requiere.
+available_cameras: [primary]
+
+num_iterations: 1000

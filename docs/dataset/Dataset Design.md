@@ -104,7 +104,13 @@ def build_dataset(config: dict) -> Dataset:
   `actions`) y su `instruction` en un `meta.json`. Es el **adaptador de referencia** y el
   soporte de los fixtures: al no depender de nada externo, su suite de contrato corre en
   `fast`, offline y determinista. Define de hecho el "formato canónico en disco" al que los
-  adaptadores reales pueden exportar.
+  adaptadores reales pueden exportar. En disco las imágenes pueden ir en `float32` (se
+  entregan tal cual) o en `uint8` 0–255 (4× menos espacio; se entregan `float32` en
+  `[0, 1]`). Carga todo en memoria al construirse, pero guarda **solo el frame de cada
+  par**, convertido y copiado, no una vista del episodio: con LIBERO (273 mil frames a
+  256×256, dos cámaras), retener los episodios completos en `float32` ocuparía ~430 GB.
+  Los corpus grandes se convierten con `scripts/prepare_lerobot_local.py` (ver
+  `Pi0 E2E Plan.md`).
 - **`LeRobotDataset` (primer corpus real).** Traduce un dataset LeRobot (HuggingFace,
   parquet + vídeos) al tipo canónico. Liviano (apoyado en `torch`/HF datasets), cabe en la
   RTX 2050 y funciona offline contra un snapshot local. Primer adaptador real a construir.

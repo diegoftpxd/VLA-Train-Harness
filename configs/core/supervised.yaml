@@ -1,0 +1,13 @@
+# Proceso Core del flujo supervisado de 3 procesos.
+#
+#   uv run vla-core --config configs/core/supervised.yaml
+#
+# Gateway real con componentes fake en memoria, salvo el Dataset, que vive en un
+# proceso aparte: Core lo consume por ZeroMQ con un DatasetClient (ver
+# configs/core/dataset.yaml y docs/core/Core Design.md, "Dataset como proceso
+# aparte"). El Learner se conecta al ROUTER de `server.address`.
+seed: 0
+server: { address: "tcp://127.0.0.1:5555" }
+backend:
+  type: fake
+  dataset: { type: client, address: "tcp://127.0.0.1:5556", timeout_s: 10 }

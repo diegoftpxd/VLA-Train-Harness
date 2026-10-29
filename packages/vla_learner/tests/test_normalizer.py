@@ -92,3 +92,30 @@ def test_nrm05_sobrevive_state_dict():
     otra.load_state_dict(norm.state_dict())
     x = torch.randn(3, 1, 3)
     assert torch.allclose(norm.normalize(x, "robotA"), otra.normalize(x, "robotA"))
+
+
+def test_from_values_coincide_con_fit_y_expone_la_dimension():
+    muestras = list(zip(make_observations(4), _chunks_de_prueba(), strict=True))
+    por_fit = ActionNormalizer.fit(muestras, mode="mean_std")
+    valores = np.concatenate([np.stack([a.values for a in chunk]) for _, chunk in muestras])
+    por_valores = ActionNormalizer.from_values(valores, mode="mean_std")
+    x = torch.randn(2, 3, 2)
+    assert torch.allclose(por_fit.normalize(x, "default"), por_valores.normalize(x, "default"))
+    assert por_valores.dim() == 2
+
+
+def test_from_values_rechaza_formas_invalidas():
+    with pytest.raises(ValueError, match=r"\[N, D\]"):
+        ActionNormalizer.from_values(np.zeros(3, dtype=np.float32))
+    with pytest.raises(ValueError, match=r"\[N, D\]"):
+        ActionNormalizer.from_values(np.zeros((0, 2), dtype=np.float32))
+
+
+def _chunks_de_prueba():
+    from vla_common import Action
+
+    rng = np.random.default_rng(1)
+    return [
+        [Action(values=(rng.standard_normal(2) * 50 + 300).astype(np.float32)) for _ in range(3)]
+        for _ in range(4)
+    ]
