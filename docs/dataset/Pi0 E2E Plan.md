@@ -92,7 +92,7 @@ código, y un commit en la rama `Dataset`. **Estado: los cinco pasos están hech
 La prueba corrió en el cluster (job Slurm 35206, nodo `llaima`, A40) y cumplió el
 criterio de éxito; ver el paso 5 y "Puntos abiertos".
 
-1. ✅ **Script de preparación (offline, una vez).** `scripts/prepare_pi0_pusht.py`:
+1. ✅ **Script de preparación (offline, una vez).** `scripts/prepare_lerobot_local.py`:
    - carga pusht con `from lerobot.datasets.lerobot_dataset import LeRobotDataset`
      (**path correcto de 0.4.4**, no el del adaptador con bug), con respaldo al layout
      viejo `lerobot.common.datasets...`;
@@ -101,7 +101,7 @@ criterio de éxito; ver el paso 5 y "Puntos abiertos".
    - escribe cada ventana como un episodio en formato `local`:
      `data/pi0_pusht/<idx>/data.npz` con `observation.images.base_0_rgb` `(50,C,H,W)`,
      `proprio` `(50,2)`, `actions` `(50,2)`; y `meta.json` con `instruction`;
-   - se corre con `uv run --extra pi0 python -I scripts/prepare_pi0_pusht.py`.
+   - se corre con `uv run --extra pi0 python -I scripts/prepare_lerobot_local.py`.
      **Desviación respecto al plan original:** se usa `--extra pi0`, no `--extra lerobot`.
      El extra `lerobot` vive en `vla-core` y **no está expuesto** a nivel de workspace;
      el root sí expone `pi0` (`vla-learner[pi0]`), que fija `lerobot>=0.4.4`, justo la
@@ -123,7 +123,7 @@ criterio de éxito; ver el paso 5 y "Puntos abiertos".
      en `float32`. El script decodifica todos los frames del corpus aunque se pase
      `--max-episodes` (el tope solo limita lo que se escribe) y los junta en RAM
      (~3 GB); tarda varios minutos.
-   - Validación en `fast`: `packages/vla_core/tests/test_prepare_pi0_pusht.py` ejercita
+   - Validación en `fast`: `packages/vla_core/tests/test_prepare_lerobot_local.py` ejercita
      los helpers puros del script (`ventanas`, `preparar_desde_episodios`) sobre arrays
      sintéticos, chequea el troceo a 50 y lee la salida con `LocalDataset`, sin descargar
      nada. `lerobot` se importa solo dentro de `main`, así que el test no lo necesita.
@@ -138,7 +138,7 @@ criterio de éxito; ver el paso 5 y "Puntos abiertos".
      cameras: { observation.images.base_0_rgb: observation.images.base_0_rgb }
      demo_chunk_size: 50            # = n_action_steps de π0 (restricción 3)
    ```
-   Validada en `test_prepare_pi0_pusht.py` (`fast`), **no** en `test_configs.py`: ese
+   Validada en `test_prepare_lerobot_local.py` (`fast`), **no** en `test_configs.py`: ese
    suite construye y atiende cada config, y `path: data/pi0_pusht` no está en el repo
    (es el corpus convertido). En su lugar el test chequea los invariantes del YAML y
    sirve el bloque `dataset` por un Core real sobre un fixture sintético (mismo troceo
@@ -198,7 +198,8 @@ criterio de éxito; ver el paso 5 y "Puntos abiertos".
 
 ## Fuera de alcance de esta prueba
 
-- Que π0 **aprenda** la tarea de pusht (acciones 2-D padeadas a 32; es solo humo).
+- Que π0 **aprenda** la tarea, en pusht (acciones 2-D padeadas a 32) o en LIBERO: 10
+  pasos son solo humo.
 - El adaptador `lerobot` en vivo (Opción A) y su fix de import: solo si luego se pide
   servir corpus LeRobot sin convertir.
 - Open-X / otros embodiments con 3 cámaras reales.
@@ -212,8 +213,54 @@ criterio de éxito; ver el paso 5 y "Puntos abiertos".
   `Observation` no trae, `Pi0Processor` lanza `ValueError`.
 - **Memoria GPU.** Igual que el smoke: bf16, `batch_size` chico, `freeze: [action]`.
 - **Warning de `state_dict`** observado al cargar `pi0_base` ("Could not remap state
-  dict keys"): no es fatal (el modelo carga y entrena), pero conviene auditarlo aparte
-  para descartar pesos sin mapear.
+  dict keys"): inofensivo. El `embed_tokens` que reporta faltante está atado a
+  `lm_head` y queda cargado (job 35263; ver "Puntos abiertos").
+
+## Segundo dataset real: LIBERO
+
+Misma prueba de dos procesos, ahora sobre **LIBERO** (`lerobot/libero`): 1693 demos
+de un Panda en 40 tareas de manipulación (suites Spatial, Object, Goal y 10), dos
+cámaras de 256×256 (vista general y muñeca), estado de 8 dims y acción de 7. Son las
+mismas demos que usa openpi para π0 (`physical-intelligence/libero`, que declara venir
+de `openvla/modified_libero_rlds`, la versión de OpenVLA que descartó las demos cuya
+reproducción fallaba): son **trayectorias exitosas**. Se usa `lerobot/libero` porque
+está en el formato v3 que lee lerobot 0.4.4 y pesa 1,9 GB (vídeo AV1, que PyAV decodifica
+con `libdav1d`).
+
+Qué hubo que generalizar (pusht tenía una cámara, instrucción fija, imágenes de 96×96
+y 25 mil frames; LIBERO, 2 cámaras, 40 instrucciones, 256×256 y 273 mil frames):
+
+- **Conversor** `scripts/prepare_lerobot_local.py` (antes `prepare_pi0_pusht.py`):
+  varias cámaras (`--camera clave_corpus=clave_canonica`), instrucción de cada episodio
+  (`frame["task"]`; `--instruction` la fija), imágenes `uint8` comprimidas, un episodio
+  en memoria a la vez (antes juntaba el corpus entero en RAM) y `--max-episodes N`, que
+  elige N episodios repartidos por todo el corpus y baja y decodifica solo esos.
+- **`LocalDataset`** guardaba vistas de los episodios completos en `float32`: con LIBERO
+  entero serían ~430 GB de RAM en Core. Ahora guarda solo el frame de cada par (ver
+  `Dataset Design.md`).
+- **Configs** `configs/core/pi0_libero.yaml` y `configs/pi0_libero_bc.yaml`: vista general
+  → `base_0_rgb`, muñeca → `left_wrist_0_rgb` (dos de las tres cámaras de π0).
+- **`pi0_bc.sbatch`** toma `CORE_CONFIG`/`LEARNER_CONFIG` del entorno y espera hasta
+  `CORE_WAIT_S` (300 s) al Core, que con LIBERO tarda ~70 s en cargar.
+
+Runbook:
+
+```bash
+uv run --extra pi0 python -I scripts/prepare_lerobot_local.py \
+    --repo-id lerobot/libero --out data/pi0_libero --max-episodes 200 \
+    --camera observation.images.image=observation.images.base_0_rgb \
+    --camera observation.images.image2=observation.images.left_wrist_0_rgb
+CORE_CONFIG=configs/core/pi0_libero.yaml LEARNER_CONFIG=configs/pi0_libero_bc.yaml \
+    sbatch slurm/pi0_bc.sbatch
+```
+
+**Resultado.** Conversión: 200 episodios (32.980 frames, las 40 tareas) → 557 ventanas de
+50 pasos, 4,9 GB, en unos 15 minutos. Core: arranca en ~70 s y ocupa 0,9 GB de RAM.
+Estadísticas (`fit`, 256 pares): acción con desvío 0,04–0,44 en posición/rotación y ~1 en
+la pinza (±1). Entrenamiento (job 35231, `COMPLETED`, 3 min 25 s): los 10 pasos dieron
+`fm_mse` entre 0.11 y 0.28 y `grad_norm` entre 1.0 y 4.1 (paso 0: `fm_mse=0.1228`,
+`grad_norm=1.00`). Para LIBERO completo, sacar `--max-episodes` (~5000 ventanas, ~7 GB de
+RAM en Core).
 
 ## Puntos abiertos (no bloquean la prueba de humo; sí un entrenamiento real)
 
@@ -243,7 +290,41 @@ criterio de éxito; ver el paso 5 y "Puntos abiertos".
   `grad_clip: 1.0`. La instrucción llega tokenizada como `'<bos>push the T block\n'`
   (48 tokens, relleno a la derecha). El `lr=0.0001` del log es el `5e-5` del config
   redondeado por el formato `.4f` del logger.
-- **Warning de `state_dict`**: sigue apareciendo (ver arriba); falta auditarlo.
+- ✅ **Warning de `state_dict` (resuelto, verificado en el cluster: job 35263): es
+  inofensivo.** `scripts/check_pi0_embed_tie.py` (`slurm/pi0_check_embed.sbatch`) carga
+  `pi0_base` por el mismo camino que el Learner y confirma que `embed_tokens.weight` y
+  `lm_head.weight` son el mismo tensor (mismo `data_ptr`, `tie_word_embeddings=True`) y
+  que tienen exactamente los valores de `paligemma_with_expert.paligemma.lm_head.weight`
+  del checkpoint (desvío 0,184 en ambos). El aviso sale porque `state_dict()` lista los
+  dos nombres del tensor atado y el checkpoint guarda solo uno. Análisis previo: el log
+  completo dice qué falta: `Missing key(s): model.paligemma_with_expert.paligemma.model.
+  language_model.embed_tokens.weight`, la tabla de embeddings del texto. LeRobot carga
+  con `strict=True`: PyTorch copia todos los pesos que coinciden antes de fallar, y
+  LeRobot atrapa el error y lo imprime como warning, así que lo único sin cargar es esa
+  tabla. El checkpoint no la trae, pero sí `paligemma.lm_head.weight` (257152×2048, el
+  mismo tamaño). En Gemma ambas matrices están atadas (`tie_word_embeddings`), así que
+  el warning es inofensivo **si** el modelo de LeRobot las ata (lo hace: ver arriba).
 - **`train_openvla_bc.sbatch` tiene el mismo riesgo de puerto** (`tcp://127.0.0.1:5555`
   fijo en un nodo compartido). No se cambió porque no se volvió a correr; si falla con
   `Address already in use`, se arregla igual que `pi0_bc.sbatch`.
+
+## Próximos pasos (en orden)
+
+La tubería de datos ya está probada con dos corpus reales: lo que falta es que π0
+**aprenda** y poder **medirlo**. Cada paso depende del anterior.
+
+1. ✅ **Confirmar el `embed_tokens`** (job 35263, 1 min). Están atadas y cargadas: el
+   warning es inofensivo y no hace falta tocar `_LeRobotPi0Model`. Para re-verificar
+   otro checkpoint: `MODEL=<ruta o id> sbatch slurm/pi0_check_embed.sbatch`.
+2. **Entrenamiento de BC real sobre LIBERO.** Convertir el corpus completo (sin
+   `--max-episodes`, ~5000 ventanas), subir `num_iterations` a miles, guardar
+   checkpoints periódicos y registrar la curva de `fm_mse`. Éxito: la pérdida baja de
+   forma sostenida y el checkpoint se recarga con sus estadísticas
+   (`ACTION_STATS_FILE`/`STATE_STATS_FILE`). Conviene medir antes el rendimiento del
+   Core con 5000 ventanas: si el muestreo frena al Learner, es la medición que pide
+   `Architecture.md` antes de optimizar el transporte.
+3. **Evaluación en simulación.** La pérdida no dice si el robot cumple la tarea. Hace
+   falta un **Environment real de LIBERO** (proceso aparte con MuJoCo/robosuite que
+   implemente `reset`/`step`/`close` y pase la suite ENV) y correr el checkpoint contra
+   las 40 tareas para medir la tasa de éxito. Es el primer componente real fuera de
+   Core y el Learner, y abre el camino al RL en ambiente (PPO/GRPO) con π0.

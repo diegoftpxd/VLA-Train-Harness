@@ -23,7 +23,8 @@ la misma.
 |---|---|---|---|
 | `smoke_cpu.sbatch` | 1 | no | Valida el entorno: contratos `fast` + BC tiny en CPU |
 | `pi0_smoke.sbatch` | 1 | sí | Prueba de entrenamiento mínimo de π0: unos pasos de BC con solo el *action expert* entrenable (resto congelado) |
-| `pi0_bc.sbatch` | 1 | sí | Core + Learner π0 (BC) en el mismo nodo, con el dataset real pusht servido por Core |
+| `pi0_bc.sbatch` | 1 | sí | Core + Learner π0 (BC) en el mismo nodo, con un dataset real servido por Core (pusht o LIBERO) |
+| `pi0_check_embed.sbatch` | 1 | sí | Verifica que el `embed_tokens` de π0 esté atado a `lm_head` y cargado (el warning `Could not remap state dict keys` es inofensivo); no entrena |
 | `train_openvla_bc.sbatch` | 1 | sí | Core + Learner en el mismo nodo (OpenVLA BC) |
 | `core.sbatch` + `learner.sbatch` | 2 | sí (Learner) | Core en CPU y Learner en GPU, en nodos separados |
 
@@ -89,7 +90,7 @@ convertido a formato `local` y el Learner entrena π0 con BC. Primero convertí 
 corpus, una sola vez, en el nodo de login:
 
 ```bash
-uv run --extra pi0 python -I scripts/prepare_pi0_pusht.py   # escribe data/pi0_pusht/
+uv run --extra pi0 python -I scripts/prepare_lerobot_local.py   # escribe data/pi0_pusht/
 sbatch slurm/pi0_bc.sbatch
 ```
 
@@ -111,6 +112,16 @@ sbatch slurm/pi0_bc.sbatch
   pedidos al Core (`normalizer.stats: fit` en `configs/pi0_pusht_bc.yaml`).
 - Éxito: el log (`slurm/logs/pi0-bc-<JOBID>.out`) muestra los 10 pasos con
   `fm_mse` y `grad_norm` finitos, y el job termina en `COMPLETED`.
+- **Otro dataset (LIBERO):** convertilo con el comando de la cabecera de
+  `configs/core/pi0_libero.yaml` y elegí los configs por variable de entorno:
+
+  ```bash
+  CORE_CONFIG=configs/core/pi0_libero.yaml LEARNER_CONFIG=configs/pi0_libero_bc.yaml \
+      sbatch slurm/pi0_bc.sbatch
+  ```
+
+  El job verifica que exista el `dataset.path` del config de Core y espera al Core hasta
+  `CORE_WAIT_S` segundos (300 por defecto; con LIBERO tarda ~70 s en cargar).
 
 ### OpenVLA BC en un solo nodo (recomendado)
 

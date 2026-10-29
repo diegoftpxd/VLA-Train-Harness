@@ -1,22 +1,26 @@
 #!/usr/bin/env bash
-# Prueba E2E de DOS PROCESOS de π0 (BC) sobre un dataset real (pusht) en un nodo.
+# Prueba E2E de DOS PROCESOS de π0 (BC) sobre un dataset real en un nodo.
 #
 # Levanta el Core (CPU, ZeroMQ, base liviana SIN torch/lerobot) y el Learner π0
 # (GPU) en el MISMO nodo, comunicados por un socket ipc:// propio del job (el
-# script reescribe la dirección de los YAML; ver abajo), con los configs:
-#     configs/core/pi0_pusht.yaml   (Core: dataset `local` = pusht convertido)
-#     configs/pi0_pusht_bc.yaml     (Learner: pi0 BC)
+# script reescribe la dirección de los YAML; ver abajo). Los configs salen de
+# CORE_CONFIG y LEARNER_CONFIG (por defecto, pusht):
+#     configs/core/pi0_pusht.yaml  + configs/pi0_pusht_bc.yaml    (pusht, 1 cámara)
+#     configs/core/pi0_libero.yaml + configs/pi0_libero_bc.yaml   (LIBERO, 2 cámaras)
 #
 # Es el paso 4 de docs/dataset/Pi0 E2E Plan.md. A diferencia de pi0_smoke.sbatch
 # (un proceso, datos sintéticos), acá los datos salen de un corpus real a través
 # del harness de verdad (Dataset -> Core -> Learner).
 #
 # ANTES de correr: convertí el corpus una sola vez (offline, necesita el extra
-# `pi0` = lerobot 0.4.4) para poblar data/pi0_pusht/ en formato `local`:
-#     uv run --extra pi0 python -I scripts/prepare_pi0_pusht.py
+# `pi0` = lerobot 0.4.4) para poblar el `dataset.path` del config de Core
+# (comandos en la cabecera de cada config):
+#     uv run --extra pi0 python -I scripts/prepare_lerobot_local.py ...
 #
 # Uso:
-#     sbatch slurm/pi0_bc.sbatch
+#     sbatch slurm/pi0_bc.sbatch                                   # pusht
+#     CORE_CONFIG=configs/core/pi0_libero.yaml \
+#     LEARNER_CONFIG=configs/pi0_libero_bc.yaml sbatch slurm/pi0_bc.sbatch   # LIBERO
 #
 # OJO (MEMORIA): π0 carga ~7-8 GB en bf16 (PaliGemma-3B + action expert) solo en
 # pesos; aunque se entrene solo el action expert, el backbone vive en VRAM. NO
@@ -25,7 +29,7 @@
 # cuenta, GPU, memoria y tiempo a tu sitio.
 
 #SBATCH --job-name=pi0-bc
-#SBATCH --comment="VLA-Train-Harness: prueba E2E de dos procesos (Core + Learner pi0 BC) sobre el dataset real pusht"
+#SBATCH --comment="VLA-Train-Harness: prueba E2E de dos procesos (Core + Learner pi0 BC) sobre un dataset real (pusht o LIBERO)"
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=diego.toledo@uc.cl
 #SBATCH --ntasks=1
@@ -55,8 +59,12 @@ source "${_COMMON}"
 
 mkdir -p slurm/logs
 
-CORE_CONFIG="configs/core/pi0_pusht.yaml"
-LEARNER_CONFIG="configs/pi0_pusht_bc.yaml"
+CORE_CONFIG="${CORE_CONFIG:-configs/core/pi0_pusht.yaml}"
+LEARNER_CONFIG="${LEARNER_CONFIG:-configs/pi0_pusht_bc.yaml}"
+# El directorio del dataset `local` es el `path:` del config de Core (relativo a la
+# raíz del repo); se verifica antes de levantar nada.
+DATA_DIR="$(sed -nE 's/^[[:space:]]*path:[[:space:]]*([^[:space:]#]+).*/\1/p' "${CORE_CONFIG}" | head -1)"
+echo ">> Configs: Core=${CORE_CONFIG} Learner=${LEARNER_CONFIG} datos=${DATA_DIR}"
 
 # Core y Learner corren en el MISMO nodo, así que se hablan por ipc:// (como pide
 # Architecture.md) en un socket propio del job, NO por el tcp://...:5555 fijo de
@@ -80,9 +88,9 @@ export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:T
 export PYTHONUNBUFFERED=1
 
 # El dataset `local` tiene que estar preparado antes (ver cabecera).
-if [[ ! -d "data/pi0_pusht" ]]; then
-    echo "ERROR: falta data/pi0_pusht. Corré primero:" >&2
-    echo "    uv run --extra pi0 python -I scripts/prepare_pi0_pusht.py" >&2
+if [[ -z "${DATA_DIR}" || ! -d "${DATA_DIR}" ]] || [[ -z "$(ls -A "${DATA_DIR}" 2>/dev/null)" ]]; then
+    echo "ERROR: falta el dataset '${DATA_DIR}' (o está vacío). Convertí el corpus" >&2
+    echo "       con scripts/prepare_lerobot_local.py (ver la cabecera del config de Core)." >&2
     exit 1
 fi
 
@@ -107,8 +115,11 @@ trap cleanup EXIT
 # Esperar a que el Core cree su socket ipc antes de lanzar el Learner. Si el Core
 # muere mientras tanto (bind fallido, config inválida), se corta acá con error en
 # vez de lanzar el Learner contra nada.
-echo "Esperando a que el Core abra ${CORE_SOCKET} (máx 120s)..."
-for _ in $(seq 120); do
+# El Core carga todo el dataset al arrancar (LIBERO, 200 episodios: ~70 s en el nodo
+# de login, descomprimiendo 4,9 GB); 300 s deja margen para un NFS lento.
+CORE_WAIT_S="${CORE_WAIT_S:-300}"
+echo "Esperando a que el Core abra ${CORE_SOCKET} (máx ${CORE_WAIT_S}s)..."
+for _ in $(seq "${CORE_WAIT_S}"); do
     [[ -S "${CORE_SOCKET}" ]] && break
     if ! kill -0 "${CORE_PID}" 2>/dev/null; then
         echo "ERROR: el Core terminó antes de abrir su socket (ver .err)." >&2
@@ -117,7 +128,7 @@ for _ in $(seq 120); do
     sleep 1
 done
 if [[ ! -S "${CORE_SOCKET}" ]]; then
-    echo "ERROR: el Core no abrió ${CORE_SOCKET} tras 120s." >&2
+    echo "ERROR: el Core no abrió ${CORE_SOCKET} tras ${CORE_WAIT_S}s." >&2
     exit 1
 fi
 echo ">> Core listo en ${CORE_ADDRESS}"

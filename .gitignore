@@ -20,6 +20,6 @@ runs/
 # Pesos descargados de Hugging Face (ver slurm/common.sh: HF_HOME)
 .hf_cache/
 
-# Datasets convertidos desde un corpus descargado (p. ej. scripts/prepare_pi0_pusht.py).
+# Datasets convertidos desde un corpus descargado (p. ej. scripts/prepare_lerobot_local.py).
 # Son datos derivados, grandes y no confiables: se regeneran, no se versionan.
 /data/
