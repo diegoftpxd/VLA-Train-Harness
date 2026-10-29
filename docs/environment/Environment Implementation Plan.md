@@ -234,7 +234,7 @@ los timeouts de la config, y que una caída real de un proceso quede aislada.
 | CFG-04 | `test_configs.py` | `env_reach.yaml` se construye (sin round-trip: sus ambientes son procesos aparte) | `fast` |
 | DIST-01 | `vla_core/tests/test_env_processes.py` | Core + dos **subprocesos** `python -m vla_env.cli --config configs/env/reach.yaml --address tcp://127.0.0.1:<efímero>`: `reset`/`step` enrutan, respetan el orden y registran una transición por ambiente | `distributed` |
 | DIST-02 | idem | Se mata uno de los procesos: ese ambiente da `DownstreamUnavailable` y queda marcado no disponible; el otro sigue respondiendo | `distributed` |
-| DIST-03 | idem | Al bajar Core (`close`), los procesos reciben `close` y el ambiente queda cerrado | `distributed` |
+| DIST-03 | idem | `CoreServer.shutdown()` (lo que hace `vla-core` al salir) manda `close` a cada proceso: el ambiente queda cerrado (un `step` pide `reset`) y vuelve a abrirse con `reset`. **Desvío:** al implementarlo se vio que nadie llamaba a `Core.close()` (el `close` del Learner no cierra el backend), así que se agregó `CoreServer.shutdown` y la CLI lo usa | `distributed` |
 
 Los tests `distributed` lanzan `vla-env` con `sys.executable -m vla_env.cli`: usan el venv
 del workspace sin importar `vla_env` desde `vla_core`. Esperan a que cada proceso responda
@@ -264,8 +264,8 @@ de Core, y no cambia ni el Learner ni el protocolo.
 1. **Config del Learner** `configs/ppo_env_reach.yaml`: copia de `ppo_tiny.yaml` con
    `core: {type: zmq, address: ..., timeout_s: ...}` y
    `data.env_ids: [reach-0, reach-1]`.
-2. **Fixture compartida** en `vla_core/tests/conftest.py`: levanta N procesos `vla-env`
-   `reach` y un `CoreServer` construido con `environments:` apuntando a ellos. La reusan
+2. **Helper compartido** `lanzar_vla_env(n)` en `vla_core/tests/conftest.py` (ya existe desde
+   la fase 3): levanta N procesos `vla-env` `reach` y espera a que respondan. Lo reusan
    DIST-01…03 y E2E-ENV.
 
 ### Tests (`vla_core/tests/test_e2e_env.py`, marca `slow`)

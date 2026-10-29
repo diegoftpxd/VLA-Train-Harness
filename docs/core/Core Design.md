@@ -66,7 +66,8 @@ Dueño del socket `ROUTER`. Su loop recibe un mensaje multiparte, separa la iden
 class CoreServer:
     def __init__(self, backend: CoreInterface, address: str): ...
     def start(self) -> str: ...   # bindea, devuelve el endpoint real, atiende en un hilo
-    def stop(self) -> None: ...
+    def stop(self) -> None: ...       # libera el socket
+    def shutdown(self) -> None: ...   # stop + backend.close() (cierra los ambientes)
 ```
 
 No contiene lógica de negocio ni conoce los tipos del dominio: solo frames y despacho. Es casi idéntico al `FakeCoreServer` actual; la diferencia es que recibe el backend por parámetro en vez de crear un `FakeCoreClient`.
@@ -319,7 +320,9 @@ environments:
 timeouts: { environment_s: 30, retries: 1 }   # un reset de LIBERO tarda más que 5 s
 ```
 
-**Estado:** los bloques `environments` y `timeouts` son la fase 3 de `Environment Design.md`. Hasta entonces, `build_core` solo lee `backend` y `dataset`.
+`build_environments(entries, timeouts)` (en `builder.py`) arma ese registro: valida que cada entrada tenga `id` y `address` y que no haya ids repetidos, y no autoregistra (un `env_id` fuera de la config es `UnknownEnvironment`). `timeouts` acepta `environment_s` y `retries`; los de WorldModel y Reward Model se leerán cuando esos clientes se armen desde la config.
+
+**Ciclo de vida.** `CoreServer.stop()` solo libera el socket. `CoreServer.shutdown()` además cierra el backend, y `Core.close()` manda `close` a cada ambiente. La CLI `vla-core` usa `shutdown` al salir, así un proceso `vla-env` o un robot no queda abierto cuando Core se apaga. El `close` que manda el Learner por el protocolo **no** cierra el backend (`dispatch_request` solo lo confirma): el ciclo de vida del servidor es de quien lo levantó.
 
 ## Estructura del paquete
 

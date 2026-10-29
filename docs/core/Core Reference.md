@@ -156,7 +156,7 @@ backend: { type: fake, demo_chunk_size: 1 }    # qué backend envuelve
 
 El `fake` ensambla el gateway real con `FakeEnvironment` (autoregistrado por `env_id` al vuelo), `FakeWorldModel`, `FakeRewardModel`, `FakeDataset` e `InMemoryEpisodeStore`. El bloque `dataset` (opcional) reemplaza al `FakeDataset` por el que construye `build_dataset`.
 
-**Ambientes reales (pendiente: fase 3 de `Environment Design.md`).** Un bloque `environments:` reemplaza el registro fake por un `EnvironmentClient` por entrada, cada uno apuntando a un proceso `vla-env`; `timeouts:` fija timeouts y reintentos:
+**Ambientes reales.** Un bloque `environments:` reemplaza el registro fake por un `EnvironmentClient` por entrada, cada uno apuntando a un proceso `vla-env`, sin autoregistro; `timeouts:` fija timeout y reintentos de esos clientes. Ejemplo listo para usar: `configs/core/env_reach.yaml` (sus comentarios traen los tres comandos para levantarlo). Al salir, `vla-core` hace `CoreServer.shutdown()`, que cierra cada ambiente:
 
 ```yaml
 environments:

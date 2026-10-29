@@ -112,6 +112,7 @@ class GymEnvironment(Environment):
         if self._sim is not None and hasattr(self._sim, "close"):
             self._sim.close()
         self._sim = None
+        self._done = True  # tras close, solo un reset vuelve a habilitar step
 
     def emergency_stop(self) -> None:
         pass  # un simulador no tiene nada que frenar

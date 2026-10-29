@@ -16,6 +16,7 @@ Harness para entrenar modelos VLA (vision-language-action) con aprendizaje super
 Se implementa siguiendo `docs/environment/Environment Implementation Plan.md`. Avance:
 - ✅ **Fase 1:** contrato en `vla_common.environment` (con `check_action_chunk` y `resolve_task`), suite ENV-01…11 en `vla_common/testing/contracts/`, `FakeEnvironment` con corte a mitad de chunk y `success`, Core valida `action_dim` y reinyecta por `success`.
 - ✅ **Fase 2:** paquete `packages/vla_env` (depende solo de `vla-common`, `pyzmq`, `numpy`, `pyyaml`): `GymEnvironment` + `to_canonical_image`, `ReachEnvironment` (`type: reach`, plantilla), `EnvironmentServer`, `build_environment` y la CLI `vla-env` (`--smoke`, `--save`, `--address`); `configs/env/reach.yaml`. Suites GYM, SRVE, CLI, ARCH-ENV en `fast`.
+- ✅ **Fase 3:** Core arma su registro desde `environments:`/`timeouts:` (`build_environments`, sin autoregistro) y `CoreServer.shutdown()` cierra los ambientes al salir de `vla-core`; `configs/core/env_reach.yaml`. Suites CFG (`fast`) y DIST (`distributed`, contra procesos `vla-env` reales).
 
 Los documentos de Core marcan como *pendiente* lo que traen las fases siguientes.
 

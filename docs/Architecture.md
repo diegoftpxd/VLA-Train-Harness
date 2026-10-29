@@ -75,7 +75,7 @@ Notas:
 - **`terminated` y `truncated` separados.** RL los trata distinto al calcular retornos: un corte por tiempo no es un fracaso.
 - **`source` en cada transición** permite ponderar distinto datos reales e imaginados.
 - **El éxito va aparte, en `info["success"]`.** `terminated` no distingue entre éxito y fallo, así que todo Environment devuelve `info["success"]: bool` en cada `StepResult`. Los demás valores de `info` son escalares (`bool`, `int`, `float`, `str`), nunca arrays, para que viajen en el encabezado msgpack.
-- **Imágenes canónicas.** Cada entrada de `images` es `float32`, CHW, de 3 canales, con valores en `[0, 1]`. Cada Environment y cada adaptador de Dataset convierte a este formato, así la política ve lo mismo en entrenamiento que en el ambiente.
+- **Imágenes canónicas.** Todo Environment entrega cada entrada de `images` en `float32`, CHW, de 3 canales, con valores en `[0, 1]`. Es también lo que entrega el dataset LIBERO convertido (`LocalDataset` con `uint8` CHW en disco) y lo que consumen los procesadores `simple` y de π0. **Excepción conocida:** el fixture `openvla_demo` y el procesador de OpenVLA usan HWC; unificarlos es trabajo pendiente del Learner y del Dataset, no del Environment.
 
 ## Learner
 

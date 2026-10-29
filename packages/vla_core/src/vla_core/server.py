@@ -19,3 +19,15 @@ class CoreServer(RouterServer):
         super().__init__(
             handler=lambda request: dispatch_request(request, backend), address=address
         )
+
+    def shutdown(self) -> None:
+        """Apaga el proceso: deja de atender y cierra el backend.
+
+        ``stop`` solo libera el socket; ``shutdown`` además cierra el backend,
+        que en el ``Core`` real manda ``close`` a cada ambiente (así un proceso
+        ``vla-env`` o un robot no queda abierto cuando Core se apaga). El
+        ``close`` que manda el Learner no lo hace: el ciclo de vida del servidor
+        es de quien lo levantó (la CLI ``vla-core``).
+        """
+        self.stop()
+        self.backend.close()

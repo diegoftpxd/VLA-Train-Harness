@@ -327,14 +327,21 @@ class FakeEnvironmentRegistry(EnvironmentRegistry):
         return self._envs[env_id]
 
 
-def make_fake_core(demo_chunk_size: int = 1, dataset: Dataset | None = None) -> Core:
+def make_fake_core(
+    demo_chunk_size: int = 1,
+    dataset: Dataset | None = None,
+    environments: EnvironmentRegistry | None = None,
+) -> Core:
     """Arma un ``Core`` con todos los componentes fake en memoria.
 
     ``dataset`` permite inyectar otro ``Dataset`` (p. ej. un ``LocalDataset``
     construido desde config); si es ``None`` se usa ``FakeDataset``.
+    ``environments`` permite inyectar un registro con ambientes reales (p. ej.
+    clientes a procesos ``vla-env``); si es ``None``, cualquier ``env_id``
+    obtiene un ``FakeEnvironment`` al vuelo.
     """
     return Core(
-        environments=FakeEnvironmentRegistry(),
+        environments=environments if environments is not None else FakeEnvironmentRegistry(),
         episodes=EpisodeManager(),
         store=InMemoryEpisodeStore(),
         scorer=RewardScorer(FakeRewardModel()),

@@ -29,4 +29,4 @@ def main() -> None:
     except KeyboardInterrupt:
         pass
     finally:
-        server.stop()
+        server.shutdown()  # cierra también los ambientes
