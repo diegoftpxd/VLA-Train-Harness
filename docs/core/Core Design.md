@@ -41,7 +41,8 @@ class CoreInterface(Protocol):
 | Transporte | `dispatch_request` (función) | Traducir wire↔tipos y llamar al backend | `vla_common` |
 | Orquestación | `Core` | Coordinar cada llamada entre los colaboradores | `vla_core` |
 | Ambientes | `EnvironmentRegistry` | Mapear `env_id` → cliente de Environment + su spec + disponibilidad | `vla_core` |
-| Ambientes | `Environment` (ABC) + `EnvironmentClient` | Hablar el protocolo de un Environment (`reset`/`step`/`close`) | `vla_core` |
+| Ambientes | `Environment` (ABC), `EnvSpec`, `handle_environment` | Contrato y protocolo del Environment, compartidos con `vla_env` | `vla_common` |
+| Ambientes | `EnvironmentClient` | Hablar el protocolo de un Environment por `DEALER` | `vla_core` |
 | WorldModel | `WorldModel` (ABC) + `WorldModelClient` | `encode` una observación y `rollout` secuencias | `vla_core` |
 | Reward | `RewardModel` (ABC) + `RewardModelClient` | Puntuar un batch de transiciones (`score`) | `vla_core` |
 | Reward | `RewardScorer` | Armar el batch de puntuación y adjuntar recompensas | `vla_core` |
@@ -105,17 +106,23 @@ Responsabilidad de cada método (el detalle de los flujos está más abajo):
 
 ### Ambientes: `EnvironmentRegistry`, `Environment`, `EnvironmentClient`
 
+El contrato del Environment (`Environment`, `EnvSpec`) y su protocolo (`handle_environment`) viven en **`vla_common/environment.py`**, no en `vla_core`. Los comparten Core, que los consume, y el paquete `vla_env`, que los implementa y sirve. Así ninguno de los dos depende del otro. La racionalidad, las convenciones y las reglas de semántica están en [`../environment/Environment Design.md`](../environment/Environment%20Design.md); aquí va lo que Core necesita saber.
+
+Además del contrato, `vla_common.environment` tiene dos reglas que comparten Core y los ambientes, para no duplicarlas: `check_action_chunk(actions, action_dim)` (la forma de cada acción) y `resolve_task(task, spec)` (`None` → `tasks[0]`; una tarea desconocida es error).
+
 ```python
+# vla_common/environment.py
 @dataclass
 class EnvSpec:
     action_dim: int
     cameras: list[str]
+    tasks: list[str]            # tareas que acepta reset(task=...); task=None usa tasks[0]
 
 class Environment(ABC):
     @abstractmethod
     def reset(self, task: str | None, seed: int | None) -> Observation: ...
     @abstractmethod
-    def step(self, actions: ActionChunk) -> StepResult: ...  # reward=None; lo agrega Core
+    def step(self, actions: ActionChunk) -> StepResult: ...  # reward=None; info["success"]: bool
     @abstractmethod
     def close(self) -> None: ...
     @abstractmethod
@@ -124,6 +131,13 @@ class Environment(ABC):
     @abstractmethod
     def spec(self) -> EnvSpec: ...
 
+def check_action_chunk(actions: ActionChunk, action_dim: int) -> None: ...   # ValueError si no cumple
+def resolve_task(task: str | None, spec: EnvSpec) -> str: ...
+def handle_environment(request: dict, env: Environment) -> dict: ...   # wire → llamada sobre env
+```
+
+```python
+# vla_core/environments.py
 class EnvironmentRegistry:
     """Mapa env_id -> (Environment, disponibilidad). Resuelve, no enruta lógica."""
     def get(self, env_id: str) -> Environment: ...        # UnknownEnvironment si no existe
@@ -135,9 +149,11 @@ class EnvironmentRegistry:
     def registered(self) -> list[str]: ...                # todos (p. ej. para close)
 ```
 
-`EnvironmentClient(Environment)` implementa la interfaz hablando por `RpcChannel` a un proceso Environment. `FakeEnvironment(Environment)` la implementa en memoria (p. ej. envolviendo `ToyReachEnv`) para los tests. El registro se puebla desde configuración en v1; `register` queda disponible para auto-registro dinámico más adelante.
+`EnvironmentClient(Environment)` implementa la interfaz hablando por `RpcChannel` a un proceso Environment (un `vla-env`, que expone un `ROUTER`). `FakeEnvironment(Environment)` la implementa en memoria para los tests de Core. El registro se puebla desde el bloque `environments:` de la configuración (ver "Construcción desde configuración"); sin ese bloque, el backend fake crea un `FakeEnvironment` al vuelo por `env_id`. `register` queda disponible para auto-registro dinámico más adelante. El `spec` se pide perezosamente la primera vez que se usa y queda en caché, así que el orden de arranque de los procesos no importa.
 
-**Nota:** `Environment.step` devuelve el `StepResult` **sin** recompensa (`reward=None`); la recompensa la agrega Core con el `RewardScorer`, porque el Environment no conoce la instrucción ni el Reward Model.
+**Nota:** `Environment.step` devuelve el `StepResult` **sin** recompensa (`reward=None`); la recompensa la agrega Core con el `RewardScorer`, porque el Environment no conoce la instrucción ni el Reward Model. Sí devuelve `info["success"]: bool`, porque `terminated` no distingue entre éxito y fallo.
+
+**Validación de la acción.** En el pre-chequeo de `step`, antes de tocar ningún ambiente, Core verifica que cada acción tenga forma `(spec.action_dim,)`. Un chunk mal formado es un error y nunca llega a un robot.
 
 ### WorldModel: `WorldModel`, `WorldModelClient`, `LatentState`
 
@@ -217,7 +233,7 @@ Vive dentro de Core. Entrega acciones en unidades reales, sin normalizar. `filte
 
 **Adaptadores concretos.** El `Dataset`/`AppendableDataset` (ABC) es la única frontera que Core ve; los formatos concretos viven detrás, elegidos por la factory `build_dataset(config)` según `type` (ver [[Dataset Design]]). Disponibles: `fake` (en memoria), `local` (layout on-disk, sin dependencias), `lerobot` (corpus LeRobot, grupo opcional uv) y `openx` (Open-X Embodiment / RLDS, grupo opcional uv). Core queda así agnóstico del formato y de cómo se consulta cada corpus.
 
-**Gancho de episodios exitosos (Fase 5).** `AppendableDataset` separa la capacidad de **reinyectar** demos de la de solo leerlas: un corpus real de solo-lectura implementa solo `Dataset`; un dataset que acepta demos nuevas implementa `AppendableDataset`. Sobre esa capacidad, `Core.ingest_episode(episode_id)` toma las transiciones que Core registró para ese episodio, aplica el filtro de éxito (el episodio terminó por `terminated`, es decir alcanzó la meta, no por `truncated`) y agrega sus pares `(observación, acción)` al Dataset; devuelve cuántos agregó (`0` si no fue exitoso) y levanta `DatasetNotAppendable` si el Dataset no es agregable. Solo reinyecta lo real del almacén (`source="env"`), nunca transiciones imaginadas. El gancho vive en Core (es Core quien registró los episodios), apoyado en `AppendableDataset`; no es parte del `CoreInterface` que el Learner invoca por el protocolo.
+**Gancho de episodios exitosos (Fase 5).** `AppendableDataset` separa la capacidad de **reinyectar** demos de la de solo leerlas: un corpus real de solo-lectura implementa solo `Dataset`; un dataset que acepta demos nuevas implementa `AppendableDataset`. Sobre esa capacidad, `Core.ingest_episode(episode_id)` toma las transiciones que Core registró para ese episodio, aplica el filtro de éxito (la última transición tiene `info["success"]` verdadero; `terminated` solo no alcanza, porque un episodio también termina por fallo) y agrega sus pares `(observación, acción)` al Dataset; devuelve cuántos agregó (`0` si no fue exitoso) y levanta `DatasetNotAppendable` si el Dataset no es agregable. Solo reinyecta lo real del almacén (`source="env"`), nunca transiciones imaginadas. El gancho vive en Core (es Core quien registró los episodios), apoyado en `AppendableDataset`; no es parte del `CoreInterface` que el Learner invoca por el protocolo.
 
 ### Red: `RpcChannel`
 
@@ -269,7 +285,7 @@ Así una caída de un ambiente no arrastra a los demás: el resto sigue disponib
 
 **`step` con recompensa** (el caso central):
 
-1. `Core.step` valida con `EnvironmentManager`/`EpisodeManager` que ninguno de los `env_ids` esté terminado (`EpisodeAlreadyDone` si lo está).
+1. `Core.step` valida, antes de tocar ningún ambiente, que cada `env_id` esté disponible (`EnvironmentRegistry`), que su episodio no esté terminado (`EpisodeManager`; `EpisodeAlreadyDone` si lo está) y que cada acción tenga la dimensión de `spec.action_dim`.
 2. Por cada `env_id`: `EnvironmentRegistry.get(env_id).step(chunk)` → `StepResult` sin recompensa; guarda la observación anterior (de `EpisodeManager`).
 3. Si `with_reward`: arma un `ScoreItem` por ambiente y llama **una vez** a `RewardScorer.score(items)`; adjunta cada recompensa a su `StepResult`.
 4. Por cada ambiente, crea la `Transition` (`source="env"`, `step` de `EpisodeManager`) y la manda a `EpisodeStore.append`; luego `EpisodeManager.advance`.
@@ -285,20 +301,25 @@ Así una caída de un ambiente no arrastra a los demás: el resto sigue disponib
 
 Igual que el Learner, Core se arma desde un YAML y se levanta con `uv run vla-core --config configs/core/<archivo>.yaml`. Un `build_core(config)` (en `vla_core/builder.py`) construye el registro de ambientes, los clientes (reales o fakes según el `type`), el `Dataset`, el `EpisodeStore`, el `RewardScorer`, el `Core` y el `CoreServer`. Para no acoplar `vla_core` al Learner, Core tiene su propio builder; si se quiere un `Registry` por nombre como el del Learner, se lo sube antes a `vla_common` y lo comparten los dos (decisión abierta).
 
-Ejemplo de `configs/core/fake.yaml` (todo fake, para desarrollo local):
+Bloques del YAML:
+
+- **`backend`** elige el gateway (`fake`: `Core` con componentes fake; `static`: eco de transporte).
+- **`dataset`**, si está, reemplaza al `FakeDataset` por el de `build_dataset`.
+- **`environments`**, si está, reemplaza el registro fake por un `EnvironmentRegistry` con un `EnvironmentClient` por entrada, cada uno apuntando a un proceso `vla-env`. Sin este bloque, el registro fake crea un `FakeEnvironment` por `env_id` al vuelo (lo usa la suite CORE).
+- **`timeouts`** fija los timeouts y reintentos de los clientes (ver "Manejo de fallas").
+
+Ejemplo con ambientes reales (`configs/core/libero.yaml`):
 
 ```yaml
-seed: 0
 server: { address: "tcp://127.0.0.1:5555" }
+backend: { type: fake }
 environments:
-  - { id: sim-0, type: fake }
-  - { id: sim-1, type: fake }
-world_model: { type: fake }
-reward_model: { type: fake }
-dataset: { type: fake, demo_chunk_size: 1 }
-episode_store: { type: memory }
-timeouts: { environment_s: 5, world_model_s: 10, reward_model_s: 10, retries: 2 }
+  - { id: libero-0, address: "tcp://127.0.0.1:5601" }
+  - { id: libero-1, address: "tcp://127.0.0.1:5602" }
+timeouts: { environment_s: 30, retries: 1 }   # un reset de LIBERO tarda más que 5 s
 ```
+
+**Estado:** los bloques `environments` y `timeouts` son la fase 3 de `Environment Design.md`. Hasta entonces, `build_core` solo lee `backend` y `dataset`.
 
 ## Estructura del paquete
 
@@ -308,7 +329,7 @@ packages/vla_core/
   src/vla_core/
     server.py               # CoreServer (ROUTER)
     core.py                 # Core (gateway)
-    environments.py         # Environment (ABC), EnvironmentClient, EnvironmentRegistry, EnvSpec
+    environments.py         # EnvironmentClient, EnvironmentRegistry (el contrato está en vla_common.environment)
     world_model.py          # WorldModel (ABC), WorldModelClient, LatentState
     reward.py               # RewardModel (ABC), RewardModelClient, RewardScorer, ScoreItem
     episodes.py             # EpisodeManager, EpisodeStore (ABC), InMemoryEpisodeStore
@@ -325,7 +346,7 @@ packages/vla_core/
 
 ## Relación con las herramientas de prueba
 
-- Cada ABC (`Environment`, `WorldModel`, `RewardModel`, `Dataset`, `EpisodeStore`) trae su suite de contrato en `testing/contracts/`, que su *fake* y cualquier implementación real deben pasar.
+- Cada ABC (`WorldModel`, `RewardModel`, `Dataset`, `EpisodeStore`) trae su suite de contrato en `testing/contracts/`, que su *fake* y cualquier implementación real deben pasar. La suite ENV es la excepción: vive en `vla_common/testing/contracts/` junto al contrato del Environment, porque la importan tanto `vla_core` (fake y cliente) como `vla_env` (adaptadores).
 - La **suite CORE** que ya existe (hoy corre `CoreClient` contra `FakeCoreServer`) se reusa: ahora también corre `CoreClient` contra `CoreServer(Core(...))` con componentes fake. Es la prueba de que el Core real respeta el protocolo.
 - El `FakeCoreClient` del Learner sigue siendo la referencia monolítica del comportamiento esperado; `Core` debe producir los mismos resultados, pero con las responsabilidades separadas.
 
@@ -335,5 +356,5 @@ packages/vla_core/
 - **`Registry` compartido vs. builder propio de Core.** Por ahora, builder propio; subir `Registry` a `vla_common` solo si se quiere el mismo mecanismo por nombre en los dos procesos.
 - ~~**Timeouts y reintentos por componente.**~~ **Resuelto (Fase 6):** defaults configurables por componente, con su motivo, en "Manejo de fallas".
 - **Persistencia del `EpisodeStore`.** `InMemoryEpisodeStore` para v1; una variante en disco (para reusar episodios como datos supervisados y entrenar el WorldModel) cuando se pida.
-- **Registro de ambientes dinámico.** v1 lo puebla desde config; el auto-registro (`register` por mensaje) queda definido pero sin implementar hasta que haga falta.
+- **Registro de ambientes dinámico.** v1 lo puebla desde config (bloque `environments`); el auto-registro (`register` por mensaje) queda definido pero sin implementar hasta que haga falta.
 ```

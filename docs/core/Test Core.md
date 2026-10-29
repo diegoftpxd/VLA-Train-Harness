@@ -1,6 +1,6 @@
 # Test Core
 
-Suites de contrato de Core y de sus componentes, al estilo de [`../learner/Test Learners.md`](../learner/Test%20Learners.md). Toda implementación de una interfaz (Core, Environment, WorldModel, Reward Model, Dataset, EpisodeStore) hereda la suite correspondiente. Las suites reutilizables viven en `packages/vla_core/src/vla_core/testing/contracts/`, para que implementaciones futuras las importen.
+Suites de contrato de Core y de sus componentes, al estilo de [`../learner/Test Learners.md`](../learner/Test%20Learners.md). Toda implementación de una interfaz (Core, Environment, WorldModel, Reward Model, Dataset, EpisodeStore) hereda la suite correspondiente. Las suites reutilizables viven en `packages/vla_core/src/vla_core/testing/contracts/`, para que implementaciones futuras las importen. La suite ENV es la excepción: vive en `packages/vla_common/src/vla_common/testing/contracts/`, junto al contrato del Environment, porque la importan `vla_core` y `vla_env`, que no dependen entre sí (ver [`../environment/Environment Design.md`](../environment/Environment%20Design.md)).
 
 Principios: todo corre en **CPU** con *fakes* livianos y deterministas; nada descarga pesos; el transporte usa `tcp://127.0.0.1` con puerto efímero. Las marcas son las del proyecto (`fast`, `slow`, `distributed`, `heavy`).
 
@@ -47,8 +47,19 @@ La suite CORE que hoy corre `CoreClient` contra `FakeCoreServer` se parametriza 
 
 Cada ABC trae su suite; su *fake* y cualquier implementación real deben pasarla. Un fixture entrega la instancia bajo prueba (como hace `CoreClientContract` con `client`).
 
-- **ENV**: `reset` devuelve una `Observation` con las cámaras de su `spec`; `step` devuelve `StepResult` con `reward=None` (la recompensa la agrega Core); tras `terminated`/`truncated`, `close` y `emergency_stop` no fallan.
-- **WM**: `encode` acepta una `Observation` y `rollout` devuelve una lista de `Observation` por secuencia, con largo igual al de cada secuencia de acciones.
+- **ENV** (la cumplen `FakeEnvironment`, `EnvironmentClient` y todo adaptador de `vla_env`). **La fuente de verdad es [`../environment/Test Environment.md`](../environment/Test%20Environment.md)**, que además define ENV-10/11 y las suites GYM, SRVE, MAP y ROBOT; aquí va el resumen:
+  - **ENV-01** `reset` devuelve una `Observation` con `proprio` `float32` y las cámaras de su `spec`.
+  - **ENV-02** `step` devuelve `StepResult` con `reward=None` (la recompensa la agrega Core) y `terminated`/`truncated` booleanos.
+  - **ENV-03** el `spec` es válido: `action_dim > 0`, al menos una cámara y al menos una tarea.
+  - **ENV-04** tras llegar a un final (`step` con una acción neutra hasta `terminated` o `truncated`, con un tope), `emergency_stop` y `close` no fallan.
+  - **ENV-05** `reset` con la misma semilla es determinista.
+  - **ENV-06** `reset(task=spec.tasks[0])` da `instruction == task`; una tarea desconocida es error.
+  - **ENV-07** un chunk con dimensión distinta de `action_dim` es error.
+  - **ENV-08** `info["success"]` es `bool` y todo valor de `info` es escalar.
+  - **ENV-09** las imágenes son `float32`, CHW, de 3 canales y en `[0, 1]`, y son deterministas con la misma semilla.
+
+  El corte a mitad de chunk no se puede forzar de forma genérica: lo prueban un test propio de `FakeEnvironment` y los tests de `GymEnvironment` en `vla_env`.
+- **WM**: `encode` acepta una `Observation` y `rollout` devuelve una lista de `StepResult` por secuencia, uno por chunk, cortando la secuencia si un paso termina el episodio.
 - **RM**: `score` acepta un batch de `ScoreItem` y devuelve una recompensa por item, en el mismo orden; acepta batch vacío.
 - **STORE**: `append` luego `get(episode_id)` devuelve las transiciones en orden; `get` de un id desconocido es error.
 - **EP**: `open` crea un `episode_id` único; `advance` incrementa el paso y actualiza la observación anterior; `is_done` refleja `terminated`/`truncated`.
@@ -59,7 +70,7 @@ Cada ABC trae su suite; su *fake* y cualquier implementación real deben pasarla
 - **RESET**: abre un episodio por ambiente y guarda la observación inicial.
 - **STEP**: enruta cada chunk a su Environment; con `with_reward=True` hace **una sola** llamada a `score` para todo el batch; registra una `Transition` (`source="env"`) por ambiente; respeta la regla de episodio terminado.
 - **SIM**: resuelve el punto de partida (observación o `(episode_id, step)`), corre el WorldModel, puntúa con el mismo Reward Model y marca `source="world_model"`.
-- **DSET (nivel Core)**: `sample_supervised(n, filters?)` delega en el Dataset y conserva los filtros (también por la red, `CoreClient`↔`CoreServer`); el gancho `ingest_episode` reinyecta un episodio exitoso (`terminated`) y no uno truncado, y levanta `DatasetNotAppendable` sobre un Dataset de solo-lectura.
+- **DSET (nivel Core)**: `sample_supervised(n, filters?)` delega en el Dataset y conserva los filtros (también por la red, `CoreClient`↔`CoreServer`); el gancho `ingest_episode` reinyecta un episodio exitoso (`info["success"]`; un episodio terminado por fallo no se reinyecta) y no uno truncado, y levanta `DatasetNotAppendable` sobre un Dataset de solo-lectura.
 
 ## Fallas e integración (Fases 7–8)
 

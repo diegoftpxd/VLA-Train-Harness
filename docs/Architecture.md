@@ -74,6 +74,8 @@ Notas:
 - **La instrucción viaja en la observación.** El Reward Model la necesita para saber si la tarea pedida se cumplió.
 - **`terminated` y `truncated` separados.** RL los trata distinto al calcular retornos: un corte por tiempo no es un fracaso.
 - **`source` en cada transición** permite ponderar distinto datos reales e imaginados.
+- **El éxito va aparte, en `info["success"]`.** `terminated` no distingue entre éxito y fallo, así que todo Environment devuelve `info["success"]: bool` en cada `StepResult`. Los demás valores de `info` son escalares (`bool`, `int`, `float`, `str`), nunca arrays, para que viajen en el encabezado msgpack.
+- **Imágenes canónicas.** Cada entrada de `images` es `float32`, CHW, de 3 canales, con valores en `[0, 1]`. Cada Environment y cada adaptador de Dataset convierte a este formato, así la política ve lo mismo en entrenamiento que en el ambiente.
 
 ## Learner
 
@@ -125,10 +127,10 @@ Core recibe los pedidos del Learner, los reenvía al componente que corresponde,
 |Componente|Llamada|Entrada|Salida|
 |---|---|---|---|
 |Environment|`reset(task?, seed?)`|Tarea y semilla|`Observation`|
-|Environment|`step(actions)`|`ActionChunk`|`Observation`, `terminated`, `truncated`, `info`|
-|Environment|`close()`|—|—|
+|Environment|`step(actions)`|`ActionChunk`|`Observation`, `terminated`, `truncated`, `info` (con `success`)|
+|Environment|`close()` / `emergency_stop()` / `spec`|—|— / — / `EnvSpec` (dimensión de acción, cámaras, tareas)|
 |WorldModel|`encode(observation)`|`Observation`|`LatentState`|
-|WorldModel|`rollout(latent, action_sequences)`|Estado latente y secuencias de acciones|Observaciones predichas por secuencia|
+|WorldModel|`rollout(latent, action_sequences)`|Estado latente y secuencias de acciones|Un `StepResult` predicho por chunk de cada secuencia|
 |Reward Model|`score(transitions)`|Lista de (observación, acción, observación siguiente) con instrucción|Recompensa por transición|
 |Dataset|`sample(n, filters?)`|Cantidad y filtros|Pares (`Observation`, `ActionChunk`)|
 |Almacén de episodios|`append(transition)` / `get(episode_id)`|`Transition` / id|— / lista de `Transition`|
@@ -141,7 +143,7 @@ Core recibe los pedidos del Learner, los reenvía al componente que corresponde,
 
 ## Environment, WorldModel, Reward Model y Dataset
 
-**Environment.** Un proceso por ambiente o por grupo vectorizado, con una API tipo Gymnasium (`reset`, `step`, `close`). La misma interfaz cubre simuladores y robot real; el robot agrega límites de seguridad y una parada de emergencia que Core puede invocar. Cada proceso declara su espacio de acciones y sus cámaras al registrarse en Core.
+**Environment.** Un proceso por ambiente (`vla-env`, paquete `vla_env`), con una API tipo Gymnasium (`reset`, `step`, `close`). La misma interfaz cubre simuladores y robot real; el robot agrega límites de seguridad, un watchdog local y una parada de emergencia que Core puede invocar. Cada proceso declara su espacio de acciones, sus cámaras y sus tareas (`EnvSpec`). El contrato y el protocolo viven en `vla_common`, así que `vla_env` y Core no dependen entre sí. Diseño completo en [`environment/Environment Design.md`](./environment/Environment%20Design.md).
 
 **WorldModel.** Predice cómo cambian las observaciones ante una secuencia de acciones. Trabaja en su espacio latente: `encode` convierte una observación real en estado latente y `rollout` simula varias secuencias desde ahí. Se entrena fuera de este harness con transiciones reales; aquí se usa preentrenado y congelado.
 
@@ -163,7 +165,7 @@ Los procesos se comunican con **ZeroMQ**, con los arrays enviados como bytes cru
 
 **Patrón de sockets**
 
-- Core expone un socket `ROUTER`; Learner, Environment, WorldModel y Reward Model se conectan con `DEALER`.
+- Core expone un socket `ROUTER` al que el Learner se conecta con `DEALER`. Hacia abajo es al revés: Environment, WorldModel y Reward Model exponen cada uno un `ROUTER` y Core se conecta a ellos con `DEALER`.
 - Aunque v1 es síncrono, se usa `DEALER`/`ROUTER` en vez de `REQ`/`REP`, porque `REQ`/`REP` queda bloqueado si una respuesta se pierde o hay timeout. Con `DEALER`/`ROUTER` se pueden poner timeouts y reintentos sin reiniciar el socket.
 - Transporte `ipc://` si los procesos están en la misma máquina y `tcp://` si están en máquinas distintas. Cambiar de uno a otro es solo cambiar la dirección.
 
@@ -196,7 +198,8 @@ Ese wrapper es el único punto de traducción entre los formatos de vla-evaluati
 
 **Notas**
 
-- **La evaluación no usa Core ni sus ambientes.** El harness de evaluación trae sus propios ambientes y habla directo con el model server. Por eso no contradice la decisión 3: ocurre fuera de este harness.
+- **La evaluación formal no usa Core ni sus ambientes.** El harness de evaluación trae sus propios ambientes y habla directo con el model server. Por eso no contradice la decisión 3: ocurre fuera de este harness.
+- **La tasa de éxito dentro del harness sí usa Core.** Para saber durante el desarrollo si una política cumple la tarea, el Learner conduce episodios contra los mismos Environment del RL, por Core, con `with_reward=False`, y cuenta `info["success"]`. Es una medición interna, no un benchmark publicable (ver `Environment Design.md`, decisión E8).
 - **El modelo de evaluación no es el Learner.** El model server es un proceso nuevo que solo carga pesos; no necesita el optimizador ni nada del loop de entrenamiento.
 
 ## Flujos principales

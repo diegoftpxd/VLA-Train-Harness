@@ -6,6 +6,18 @@ Harness para entrenar modelos VLA (vision-language-action) con aprendizaje super
 
 **En curso — Dataset y π0 (rama `Dataset`).** Adaptadores de dataset (`fake`, `local`, `lerobot`, `openx`; ver `docs/dataset/Dataset Design.md`), el adaptador `Pi0Policy` en el Learner y la prueba E2E de dos procesos de `docs/dataset/Pi0 E2E Plan.md`. Esa prueba **pasó en el cluster** (job 35206): Core sirve `pusht` convertido a `local` (`scripts/prepare_lerobot_local.py`) y el Learner entrena π0 con BC, con `fm_mse`/`grad_norm` finitos en los 10 pasos. Se corre con `slurm/pi0_bc.sbatch` (ver `slurm/README.md`). Después de esa corrida, `Pi0Policy` pasó a normalizar acciones y estado (`mean_std`, estadísticas con `normalizer.stats: fit`, dentro de la política como pide `Learner Design.md`) y a cargar el tokenizer de PaliGemma. Está cubierto por la suite `fast` y **verificado en el cluster** (job 35229): `fm_mse` bajó de ~2500–7500 a ~0,06–0,13 y `grad_norm` de ~500–1000 a ~1–3. El tokenizer está en un repo de HF con acceso restringido: hay que autenticarse con `HF_HOME=.hf_cache` (ver `slurm/README.md`). **Segundo dataset real: LIBERO** (`lerobot/libero`, demos exitosas, 40 tareas, 2 cámaras): se convierte con `scripts/prepare_lerobot_local.py` (generalizado desde el script de pusht) y π0 entrenó sobre 200 episodios en el job 35231 (`fm_mse` 0,11–0,28). El warning `Could not remap state dict keys` es inofensivo: el `embed_tokens` que reporta faltante está atado a `lm_head` y queda cargado (job 35263, `slurm/pi0_check_embed.sbatch`). Lo que sigue (BC real sobre LIBERO, luego un Environment de LIBERO para evaluar) está en "Próximos pasos" del plan.
 
+**En curso — Environment (rama `Environment`).** `docs/environment/Environment Design.md` define el componente:
+- un paquete propio que **no depende de `vla_core`** (los dos se encuentran solo en `vla_common`, que pasa a tener el contrato `Environment`/`EnvSpec`, el protocolo `handle_environment` y la suite ENV);
+- la base `GymEnvironment` para simuladores;
+- `EnvironmentServer` y la CLI `vla-env` (con `--smoke` para probar un ambiente sin Core);
+- el adaptador de referencia `ReachEnvironment` y el primer ambiente real, LIBERO, sobre `hf-libero`;
+- las convenciones `info["success"]` e imágenes `float32` CHW en `[0, 1]`.
+
+Se implementa siguiendo `docs/environment/Environment Implementation Plan.md`. Avance:
+- ✅ **Fase 1:** contrato en `vla_common.environment` (con `check_action_chunk` y `resolve_task`), suite ENV-01…11 en `vla_common/testing/contracts/`, `FakeEnvironment` con corte a mitad de chunk y `success`, Core valida `action_dim` y reinyecta por `success`.
+
+Los documentos de Core marcan como *pendiente* lo que traen las fases siguientes.
+
 **Terminado — Core (`packages/vla_core`).** Las siete fases del plan: diseño y transporte (`CoreServer`/`dispatch_request`), componentes y clientes `DEALER` (Environment, WorldModel, Reward Model, Dataset, EpisodeStore) con sus fakes, el gateway `Core` (`reset`/`step`/`simulate`/`sample_supervised`/`get_episode`), el gancho de episodios exitosos, el manejo de fallas (timeouts, reconexión, parada de seguridad, multi-ambiente), la CLI `vla-core` con configs de ejemplo y la integración extremo a extremo con el Learner real. Pasa las suites de contrato (`fast`), `distributed` y la E2E (`slow`).
 
 **Terminado — Learner (`packages/vla_learner`).** Todas las clases de `Learner Design.md`: interfaces del modelo, `ComposedPolicy`, cabezas, normalizador, `BehaviorCloning`, `PPO`, `GRPO`, estimadores de ventaja, fuentes de datos, `CoreClient`, infraestructura, `Learner`, `Registry`, CLI, y el adaptador real `OpenVLAPolicy`. Pasa sus suites de contrato (`fast`) y los tests de aprendizaje (`slow`). **No se reescribe**; se toca solo si Core obliga a cambiar el protocolo.
@@ -22,6 +34,9 @@ Léelos antes de empezar cualquier tarea. Ante cualquier duda, manda el document
 - `docs/core/Core Design.md`: **a escribir en la Fase 1.** Clases e interfaces internas de Core, derivadas de `Architecture.md`, al nivel de detalle que tiene `Learner Design.md`. Es la especificación a implementar.
 - `docs/core/Test Core.md`: **a escribir en la Fase 1.** Suites de contrato que toda implementación de Core y de sus componentes debe pasar, al estilo de `Test Learners.md`.
 - `docs/learner/Learner Design.md` y `docs/learner/Test Learners.md`: referencia. Core debe honrar el `CoreClientProtocol` y el formato de wire que estos describen; no los contradigas.
+- `docs/environment/Environment Design.md`: **la especificación del componente Environment** (paquete `vla_env`, contrato en `vla_common`, convenciones, cómo agregar un ambiente o un robot, LIBERO).
+- `docs/environment/Test Environment.md`: **suites que todo ambiente debe pasar** (ENV, GYM, SRVE, CLI, MAP, ROBOT, ARCH) y cuáles corresponden a cada tipo de implementación.
+- `docs/environment/Environment Implementation Plan.md`: **el plan para implementarlo**, fase por fase: archivos, tests con su ID, integración con Core/Learner/Dataset/WorldModel/Reward Model, criterio de cierre y riesgos.
 - Cada componente tiene su carpeta en `docs/` (`docs/core/`, `docs/learner/`, `docs/environment/`, `docs/world-model/`, `docs/reward-model/`, `docs/dataset/`), con un `README.md` que lo resume y apunta a su sección de `Architecture.md`. `Architecture.md` queda en la raíz de `docs/` porque es transversal.
 
 Si al implementar necesitas desviarte del diseño (una firma, un tipo, una clase nueva), actualiza el documento en el mismo cambio y explica el motivo en tu resumen. No dejes código y documento en desacuerdo. **Si el cambio toca el protocolo, actualiza también el `CoreClient` del Learner y su suite CORE**: el cliente y el servidor no pueden divergir.
@@ -73,14 +88,16 @@ docs/                       # documentos de diseño, una carpeta por componente
   Architecture.md           # visión general, transversal a todos los componentes
   core/                     # Core Design.md, Test Core.md (Fase 1) + README
   learner/                  # Learner Design.md, Test Learners.md + README
-  environment/              # README (componente fuera de alcance; se usa un fake)
-  world-model/              # README (idem)
+  environment/              # Environment Design.md, Test Environment.md, Environment Implementation Plan.md + README
+  world-model/              # README (componente fuera de alcance; se usa un fake)
   reward-model/             # README (idem)
   dataset/                  # README (vive dentro de Core en v1)
 configs/                    # YAML de ejemplo
   core/                     # configs de Core (nuevos)
+  env/                      # configs de procesos vla-env
 packages/
-  vla_common/               # tipos compartidos y protocolo (SIN torch, SIN zmq propio del Learner)
+  vla_common/               # tipos compartidos, protocolo y contrato del Environment (SIN torch, SIN zmq)
+  vla_env/                  # procesos Environment: GymEnvironment, adaptadores, EnvironmentServer, CLI vla-env (NO depende de vla_core)
   vla_learner/              # proceso Learner (TERMINADO)
   vla_core/                 # proceso Core (FASE ACTUAL)
     src/vla_core/
@@ -95,7 +112,7 @@ packages/
     tests/
 ```
 
-`vla_common` existe porque Core y el Learner usan los mismos tipos y el mismo protocolo. **Nada de `vla_common` puede depender de `torch`.** Las suites de contrato de Core viven en `vla_core/src/vla_core/testing/contracts/`, no en `tests/`, porque implementaciones futuras (un Environment real, un Dataset real) las importan.
+`vla_common` existe porque Core y el Learner usan los mismos tipos y el mismo protocolo. **Nada de `vla_common` puede depender de `torch`.** Las suites de contrato de Core viven en `vla_core/src/vla_core/testing/contracts/`, no en `tests/`, porque implementaciones futuras (un Dataset real, un WorldModel real) las importan. La suite ENV es la excepción: vive en `vla_common/src/vla_common/testing/contracts/`, porque la importan `vla_core` y `vla_env`, y ninguno de los dos depende del otro.
 
 ## Protocolo: reglas que Core no puede romper
 

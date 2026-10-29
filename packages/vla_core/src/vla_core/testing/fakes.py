@@ -16,10 +16,17 @@ import threading
 import numpy as np
 import zmq
 
+from vla_common.environment import (
+    Environment,
+    EnvSpec,
+    check_action_chunk,
+    handle_environment,
+    resolve_task,
+)
 from vla_common.types import Action, ActionChunk, Observation, StepResult
 from vla_core.core import Core
 from vla_core.dataset import AppendableDataset, Dataset
-from vla_core.environments import Environment, EnvironmentRegistry, EnvSpec, handle_environment
+from vla_core.environments import EnvironmentRegistry
 from vla_core.episodes import EpisodeManager, InMemoryEpisodeStore
 from vla_core.errors import DownstreamTimeout
 from vla_core.reward import RewardModel, RewardScorer, ScoreItem, handle_reward_model
@@ -29,11 +36,11 @@ from vla_core.world_model import LatentState, WorldModel, handle_world_model
 BOUND = 1.0
 THRESHOLD = 0.1
 MAX_STEPS = 20
+TASK = "reach the goal"
+FAKE_SPEC = EnvSpec(action_dim=2, cameras=["front"], tasks=[TASK])
 
 
-def _observation(
-    pos: np.ndarray, goal: np.ndarray, instruction: str = "reach the goal"
-) -> Observation:
+def _observation(pos: np.ndarray, goal: np.ndarray, instruction: str = TASK) -> Observation:
     return Observation(
         images={"front": np.zeros((3, 8, 8), dtype=np.float32)},
         proprio=np.concatenate([pos, goal]).astype(np.float32),
@@ -41,39 +48,52 @@ def _observation(
     )
 
 
-def _apply(pos: np.ndarray, chunk: ActionChunk) -> np.ndarray:
-    for action in chunk:
-        pos = pos + np.asarray(action.values, dtype=np.float32)
-    return np.clip(pos, -BOUND, BOUND).astype(np.float32)
-
-
 class FakeEnvironment(Environment):
-    """Ambiente reach 2D, determinista por semilla. ``step`` no calcula recompensa."""
+    """Ambiente reach 2D, determinista por semilla. ``step`` no calcula recompensa.
+
+    Cumple las convenciones del Environment (``docs/environment``): corta el chunk
+    en la acción que alcanza la meta, marca ``info["success"]`` y rechaza un
+    ``step`` después de un final. El límite de pasos cuenta **chunks** (no
+    acciones) para seguir idéntico al ``ToyReachEnv`` del Learner.
+    """
 
     def __init__(self) -> None:
         self._pos = np.zeros(2, dtype=np.float32)
         self._goal = np.zeros(2, dtype=np.float32)
         self._steps = 0
+        self._done = False
 
     def reset(self, task: str | None, seed: int | None) -> Observation:
+        resolve_task(task, FAKE_SPEC)
         rng = np.random.default_rng(seed)
         self._pos = rng.uniform(-BOUND, BOUND, size=2).astype(np.float32)
         self._goal = rng.uniform(-BOUND, BOUND, size=2).astype(np.float32)
         self._steps = 0
+        self._done = False
         return _observation(self._pos, self._goal)
 
     def step(self, actions: ActionChunk) -> StepResult:
-        self._pos = _apply(self._pos, actions)
+        if self._done:
+            raise RuntimeError("el episodio ya terminó; hace falta reset()")
+        check_action_chunk(actions, FAKE_SPEC.action_dim)
+        reached = False
+        for action in actions:
+            self._pos = np.clip(
+                self._pos + np.asarray(action.values, dtype=np.float32), -BOUND, BOUND
+            ).astype(np.float32)
+            if float(np.linalg.norm(self._pos - self._goal)) < THRESHOLD:
+                reached = True
+                break  # el episodio termina a mitad del chunk: se corta acá
         self._steps += 1
         distancia = float(np.linalg.norm(self._pos - self._goal))
-        terminated = distancia < THRESHOLD
-        truncated = self._steps >= MAX_STEPS and not terminated
+        truncated = self._steps >= MAX_STEPS and not reached
+        self._done = reached or truncated
         return StepResult(
             observation=_observation(self._pos, self._goal),
             reward=None,  # la agrega Core
-            terminated=terminated,
+            terminated=reached,
             truncated=truncated,
-            info={"distance": distancia},
+            info={"success": reached, "distance": distancia},
         )
 
     def close(self) -> None:
@@ -84,7 +104,7 @@ class FakeEnvironment(Environment):
 
     @property
     def spec(self) -> EnvSpec:
-        return EnvSpec(action_dim=2, cameras=["front"])
+        return FAKE_SPEC
 
 
 class FakeWorldModel(WorldModel):
@@ -162,7 +182,7 @@ class FlakyEnvironment(Environment):
             reward=None,
             terminated=False,
             truncated=False,
-            info={},
+            info={"success": False},
         )
 
     def close(self) -> None:
@@ -173,7 +193,7 @@ class FlakyEnvironment(Environment):
 
     @property
     def spec(self) -> EnvSpec:
-        return EnvSpec(action_dim=2, cameras=["front"])
+        return FAKE_SPEC
 
 
 class FakeRewardModel(RewardModel):
