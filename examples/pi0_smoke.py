@@ -40,9 +40,7 @@ def _fake_observation(
     las nombra según su config (p. ej. ``observation.images.base_0_rgb``), no
     ``"primary"``, así que la observación falsa tiene que usar esos mismos nombres.
     """
-    images = {
-        cam: np.random.randint(0, 256, (size, size, 3), dtype=np.uint8) for cam in cameras
-    }
+    images = {cam: np.random.randint(0, 256, (size, size, 3), dtype=np.uint8) for cam in cameras}
     return Observation(
         images=images,
         proprio=np.zeros(7, dtype=np.float32),

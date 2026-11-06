@@ -9,6 +9,7 @@ harness no las necesita.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import Any
 
 
 class MetricsLogger(ABC):
@@ -34,7 +35,7 @@ class StdoutLogger(MetricsLogger):
 
 
 class WandbLogger(MetricsLogger):
-    def __init__(self, is_main: bool = True, **kwargs: object) -> None:
+    def __init__(self, is_main: bool = True, **kwargs: Any) -> None:
         super().__init__(is_main)
         self._run = None
         if self.is_main:
