@@ -329,9 +329,10 @@ La tubería de datos ya está probada con dos corpus reales: lo que falta es que
    `docs/environment/Environment Design.md`) y correr el checkpoint contra
    las 40 tareas para medir la tasa de éxito. Es el primer componente real fuera de
    Core y el Learner, y abre el camino al RL en ambiente (PPO/GRPO) con π0.
-   **Estado:** implementado y probado localmente (rama `Environment`, fases 5 y 6 del
-   plan de `docs/environment/`). Falta correr en el cluster, en este orden:
-   `sbatch slurm/libero_env_check.sbatch` (el ambiente pasa ENV/SRVE y se parece al
-   dataset, suite MAP) y `TASKS="<tarea>|<tarea>" sbatch slurm/pi0_libero_eval.sbatch`
-   (tasa de éxito por tarea). Para RL con π0 hay prerrequisitos abiertos: π0 no da
-   log-probabilidades (ver "Prerrequisitos para RL sobre LIBERO" del plan).
+   **Estado:** implementado (rama `Environment`, fases 5 y 6 del plan de
+   `docs/environment/`). En el cluster, `slurm/libero_env_check.sbatch` pasó (job 35443:
+   ENV/SRVE contra LIBERO real y suite MAP contra `data/pi0_libero`), y la evaluación
+   con videos (`slurm/pi0_libero_video.sbatch`, job 35609) corrió el π0 ya ajustado de
+   LeRobot con tasa 0,75 (6/8). Falta evaluar un π0 entrenado por nosotros
+   (EVAL-04), que depende del paso 2. Para RL con π0 hay prerrequisitos abiertos: π0 no
+   da log-probabilidades (ver "Prerrequisitos para RL sobre LIBERO" del plan).
