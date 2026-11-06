@@ -9,6 +9,9 @@ Definido en ``docs/environment/Environment Design.md``. Dos modos:
   ``step`` con la acción neutra (``environment.smoke_action``, o ceros), informa
   formas, dtypes, rangos y tiempos, y con ``--save DIR`` guarda las
   observaciones en un ``npz`` para inspeccionarlas.
+
+En los dos modos, ``--record DIR`` graba un video MP4 por episodio en ``DIR``
+(pisa ``environment.record.dir``; ver ``vla_env/video.py``).
 """
 
 from __future__ import annotations
@@ -35,9 +38,20 @@ def load_config(path: Path) -> dict[str, Any]:
     return yaml.safe_load(Path(path).read_text(encoding="utf-8"))
 
 
-def build_server(config: dict[str, Any], address: str | None = None) -> EnvironmentServer:
+def environment_config(config: dict[str, Any], record: Path | None = None) -> dict[str, Any]:
+    """El bloque ``environment``, con ``record.dir`` pisado por ``record`` si se da."""
+    bloque = dict(config.get("environment", {}))
+    if record is not None:
+        previo = bloque.get("record")
+        bloque["record"] = {**(previo if isinstance(previo, dict) else {}), "dir": str(record)}
+    return bloque
+
+
+def build_server(
+    config: dict[str, Any], address: str | None = None, record: Path | None = None
+) -> EnvironmentServer:
     """Ambiente del bloque ``environment`` servido en ``address`` (o en ``server.address``)."""
-    env = build_environment(config.get("environment", {}))
+    env = build_environment(environment_config(config, record))
     direccion = address or config.get("server", {}).get("address", DEFAULT_ADDRESS)
     return EnvironmentServer(env, direccion)
 
@@ -117,11 +131,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--address", help="Pisa server.address (para levantar N procesos).")
     parser.add_argument("--smoke", type=int, metavar="N", help="Prueba local de N pasos, sin red.")
     parser.add_argument("--save", type=Path, metavar="DIR", help="Con --smoke: guarda un npz.")
+    parser.add_argument(
+        "--record", type=Path, metavar="DIR", help="Graba un video MP4 por episodio en DIR."
+    )
     args = parser.parse_args(argv)
 
     config = load_config(args.config)
     if args.smoke is not None:
-        bloque = config.get("environment", {})
+        bloque = environment_config(config, args.record)
         env = build_environment(bloque)
         try:
             reporte = smoke(env, args.smoke, bloque.get("smoke_action"))
@@ -133,7 +150,7 @@ def main(argv: list[str] | None = None) -> int:
             env.close()
         return 0
 
-    server = build_server(config, args.address)
+    server = build_server(config, args.address, args.record)
     direccion = server.start()
     print(f"Environment atendiendo en {direccion}. Ctrl-C para salir.", flush=True)
     try:

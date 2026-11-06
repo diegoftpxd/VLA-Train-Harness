@@ -16,6 +16,8 @@
 #   CHECKPOINT   step_* a evaluar (por defecto, el último de LEARNER_CONFIG).
 #   LEARNER_CONFIG (configs/pi0_libero_bc.yaml), ENV_CONFIG (configs/env/libero.yaml),
 #   N_ENVS (2), EPISODES (10 por tarea), SEED (0).
+#   RECORD_DIR   si se define, cada vla-env graba un MP4 por episodio en
+#                RECORD_DIR/libero-<i>/ (`vla-env --record`; ver pi0_libero_video.sbatch).
 #
 # Uso (desde la raíz del repo):
 #     TASKS="put the bowl on the plate|open the top drawer" sbatch slurm/pi0_libero_eval.sbatch
@@ -26,11 +28,11 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32gb
 #SBATCH --partition=ialab-high-unlimit   # <-- ajustá a tu sitio
-#SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:a40:1                 # NVIDIA: torch es CUDA; antuco tiene AMD MI210 (job 35603 cayó a CPU)
 #SBATCH --qos=debug
 #SBATCH --output=slurm/logs/%x-%j.out
 #SBATCH --error=slurm/logs/%x-%j.err
-#SBATCH --time=2:00:00
+#SBATCH --time=1:00:00   # la QOS debug no admite más (job 35596 quedó en cola)
 
 # Slurm copia este script a un spool temporal, así que "$0" NO apunta al repo.
 _COMMON=""
@@ -101,9 +103,11 @@ CORE_YAML="${JOB_TMP}/core.yaml"
 } > "${CORE_YAML}"
 for i in $(seq 0 $((N_ENVS - 1))); do
     socket="${JOB_TMP}/env-${i}.ipc"
-    echo ">> Arrancando vla-env libero-${i} en ipc://${socket}"
+    RECORD_ARGS=()
+    [[ -n "${RECORD_DIR:-}" ]] && RECORD_ARGS=(--record "${RECORD_DIR}/libero-${i}")
+    echo ">> Arrancando vla-env libero-${i} en ipc://${socket} ${RECORD_ARGS[*]}"
     UV_PROJECT_ENVIRONMENT="${REPO_ROOT}/.venv-env" uv run --no-sync \
-        vla-env --config "${ENV_CONFIG}" --address "ipc://${socket}" &
+        vla-env --config "${ENV_CONFIG}" --address "ipc://${socket}" "${RECORD_ARGS[@]}" &
     PIDS+=($!)
     ENV_IDS+=("libero-${i}")
     echo "  - { id: libero-${i}, address: \"ipc://${socket}\" }" >> "${CORE_YAML}"

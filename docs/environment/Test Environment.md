@@ -136,6 +136,21 @@ adaptador que herede de `GymEnvironment` hereda estas garantías sin volver a pr
 | CLI-03 | `--address` pisa `server.address` del YAML |
 | CLI-04 | Un `type` desconocido o un extra sin instalar termina con un mensaje claro (para el extra, el comando `uv sync --extra ...`) |
 
+### Videos (VID) — `GymEnvironment` con `record`
+
+Se prueban sobre `ReachEnvironment` con un escritor falso, que guarda los cuadros en memoria
+y crea el archivo para que el renombrado sea real. El MP4 de verdad lo verifica
+`slurm/pi0_libero_video.sbatch` en el cluster (VID-06).
+
+| ID | Qué verifica |
+|---|---|
+| VID-01 | `frame_from_observation`: las cámaras canónicas, lado a lado, en `uint8` HWC; una cámara faltante o con otra altura es error |
+| VID-02 | Un cuadro por acción de bajo nivel (más el del `reset`), cortado igual que el chunk; el archivo se llama `<NNNN>_<tarea>_seed<S>_{success,fail}.mp4` según `success` |
+| VID-03 | Un episodio abandonado (`reset` o `close` a mitad) queda como `_incomplete` y el escritor se cierra |
+| VID-04 | Grabar no cambia lo que devuelve el ambiente (igualdad exacta con y sin grabador) |
+| VID-05 | `record:` en la config arma el grabador (`dir` obligatorio, sin opciones desconocidas); `--record` pisa `record.dir`; un ambiente que no es `GymEnvironment` lo rechaza |
+| VID-06 | Cluster: π0 por Core contra LIBERO deja un MP4 legible por episodio, ninguno incompleto, y tantos `_success` como éxitos cuenta `eval_success.py` |
+
 ### Consistencia con el dataset (MAP) — ambientes con dataset de entrenamiento
 
 Una política entrenada con un dataset solo funciona en el ambiente si las observaciones se
@@ -177,6 +192,7 @@ implementación.
 | DIST | Core contra procesos `vla-env` reales: enrutado, orden y aislamiento de la caída de un proceso | `distributed` |
 | E2E-ENV | El Learner entrena por Core contra procesos `vla-env` (RL en ambiente, RL en world model con inicios reales, reinyección de episodios) | `slow` |
 | EVAL | La medición de tasa de éxito cuenta por `success` y reparte episodios entre ambientes | `fast` + `slow` |
+| STATS | `scripts/export_lerobot_stats.py` traduce las estadísticas de un pipeline de LeRobot (`policy_preprocessor.json` + `.safetensors`) a `action_stats.pt`/`state_stats.pt`, con el modo de su `norm_map`, y da errores claros | `fast` |
 
 ## Reglas de arquitectura (ARCH)
 
@@ -193,7 +209,7 @@ implementación.
 | Simulador sobre `GymEnvironment` (LIBERO, MetaWorld, …) | sí | heredada | sí | — | sí, si hay dataset | — |
 | Simulador que implementa `Environment` directo | sí | — (pasa ENV-10/11 por sí mismo) | sí | — | sí, si hay dataset | — |
 | Robot real | sí | — | sí | — | sí | sí |
-| `ReachEnvironment` (referencia) | sí | es la base de GYM | sí | sí | — | — |
+| `ReachEnvironment` (referencia) | sí | es la base de GYM (y de VID) | sí | sí | — | — |
 | `FakeEnvironment` (doble de Core) | sí | — | sí (vía `EnvironmentClient`) | — | — | — |
 
 Si un test de contrato parece incorrecto para un ambiente legítimo, no se relaja ni se

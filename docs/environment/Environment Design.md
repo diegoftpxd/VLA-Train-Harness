@@ -201,12 +201,42 @@ Lo que hace la base, para que ningún adaptador lo repita:
 Un **robot real** no suele tener API Gymnasium: implementa `Environment` directamente
 (ver "Robot real") y reusa `to_canonical_image`.
 
+### Videos (`vla_env/video.py`)
+
+`GymEnvironment` tiene un atributo opcional `recorder: EpisodeRecorder | None`. Lo asigna
+`build_environment` si la config trae `record:`; `vla-env --record DIR` lo activa o le pisa
+la carpeta. Con él, cada episodio queda en un MP4:
+
+- **Un cuadro por acción de bajo nivel**, más el del `reset`. Se graba dentro del ambiente
+  porque solo ahí se ve cada acción: Core y el Learner reciben una observación por chunk
+  (50 acciones en π0), y con eso el video saldría a saltos.
+- **Cuadro:** las cámaras canónicas de la observación (ya orientadas como el dataset), lado
+  a lado y pasadas a `uint8` HWC. Se ve lo mismo que ve la política.
+- **Nombre:** `<dir>/<NNNN>_<tarea>_seed<S>_{success,fail}.mp4`. El resultado sale del
+  mismo `success` que viaja en `info`. Un episodio abandonado (`reset` o `close` a mitad)
+  queda como `_incomplete`.
+- El archivo se escribe a medida que avanza el episodio, sin acumular cuadros en memoria.
+  Grabar no cambia lo que devuelve el ambiente.
+- `imageio` + `imageio-ffmpeg` (H.264) son del extra `libero` y se importan de forma
+  perezosa. La base de `vla_env` sigue liviana.
+
+```yaml
+environment:
+  type: libero
+  ...
+  record: { dir: out/videos, fps: 20, cameras: [observation.images.image] }  # fps y cameras opcionales
+```
+
+Un `Environment` que no hereda de `GymEnvironment` (un robot) no soporta `record`, y pedirlo
+es error.
+
 ## El proceso: CLI `vla-env`
 
 ```bash
 uv run vla-env --config configs/env/<archivo>.yaml                       # atiende a Core
 uv run vla-env --config configs/env/<archivo>.yaml --address tcp://0.0.0.0:5601
 uv run vla-env --config configs/env/<archivo>.yaml --smoke 50            # prueba local
+uv run vla-env --config configs/env/<archivo>.yaml --record out/videos   # un MP4 por episodio
 ```
 
 - **Modo servidor (por defecto).** `build_environment(config["environment"])`, luego
@@ -365,7 +395,15 @@ dataset `lerobot/libero` con el que se entrenó π0:
 
 Hay que **verificar con `--smoke --save`** que la orientación de las imágenes y el layout
 del estado coinciden con los del dataset convertido (`data/pi0_libero`) antes de evaluar.
-Una discrepancia ahí no rompe ningún test, pero deja a la política ciega.
+Una discrepancia ahí no rompe ningún test, pero deja a la política ciega. Verificado en el
+cluster en el job 35443 (`slurm/libero_env_check.sbatch`).
+
+**Nombres de cámara por modelo.** Los nombres canónicos son los del dataset con el que se
+entrenó la política. `configs/env/libero.yaml` usa los de `data/pi0_libero` (`base_0_rgb`,
+`left_wrist_0_rgb`). `configs/env/libero_pi0_finetuned.yaml` usa los del π0 ya ajustado de
+LeRobot (`lerobot/pi0_libero_finetuned_v044`, entrenado sobre `HuggingFaceVLA/libero`):
+`observation.images.image` (vista general) e `image2` (muñeca). π0 busca cada imagen por
+esa clave, así que con otro nombre la daría por ausente y la enmascararía.
 
 ## Tests
 
@@ -375,6 +413,7 @@ Una discrepancia ahí no rompe ningún test, pero deja a la política ciega.
 | `test_env_reach.py` | `ReachEnvironment` pasa la suite ENV en memoria y reproduce la dinámica del fake | `fast` |
 | `test_env_server.py` | `EnvironmentServer` sirve un `ReachEnvironment` y el `EnvironmentClient` de Core pasa la suite ENV por la red | `fast` |
 | `test_env_cli.py` | La factory (`reach`, tipo desconocido), `--smoke`, `--save` y `--address` | `fast` |
+| `test_env_video.py` | Videos (suite VID): cuadro con las cámaras lado a lado, un cuadro por acción, nombre con el resultado, episodio abandonado, que grabar no cambie el resultado, `record:` y `--record` | `fast` |
 | `test_env_arch.py` | `vla_env` no importa `vla_core`, `vla_learner` ni `torch` (salvo perezoso) | `fast` |
 | `test_env_libero.py` | LIBERO sin simulador: mapeo (cuaternión, estado, rotación, tareas), `_LiberoSim` contra un simulador falso, `ensure_libero_config` y la factory sin el extra | `fast` |
 | `test_env_map_check.py` | `scripts/check_env_vs_dataset.py` (suite MAP) sobre datos sintéticos | `fast` |

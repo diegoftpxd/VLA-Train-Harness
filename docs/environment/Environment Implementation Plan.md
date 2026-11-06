@@ -35,8 +35,8 @@ desviarse, se actualiza el documento de diseño en el mismo commit.
 | 2 | Paquete `vla_env` con el ambiente `reach` | `vla_env` (nuevo), raíz | `fast` | local | ✅ `2330162` |
 | 3 | Core con ambientes por config, contra procesos `vla-env` | `vla_core` | `fast` + `distributed` | local | ✅ `ce3ca4f` |
 | 4 | Learner → Core → `vla-env`, de punta a punta | tests, configs | `slow` | local | ✅ `5a08a46` |
-| 5 | Adaptador LIBERO | `vla_env`, slurm | `fast` + `heavy` | local + cluster | 🟡 local `64a0a2e`; falta `libero_env_check.sbatch` |
-| 6 | Tasa de éxito de π0 en LIBERO | `scripts`, slurm | `fast` + `slow` + cluster | local + cluster | 🟡 local `8c08da5`; falta EVAL-04 |
+| 5 | Adaptador LIBERO | `vla_env`, slurm | `fast` + `heavy` | local + cluster | ✅ `64a0a2e`; cluster job 35443 |
+| 6 | Tasa de éxito de π0 en LIBERO | `scripts`, slurm | `fast` + `slow` + cluster | local + cluster | 🟡 local `8c08da5`; VID-06 job 35609; falta EVAL-04 |
 | — | Prerrequisitos de RL sobre LIBERO (solo decisiones) | — | — | — | abierto |
 
 Las fases 1 a 4 se cierran por completo en la máquina de desarrollo (CPU, sin pesos). Las
@@ -409,6 +409,24 @@ de LIBERO, conduciendo los ambientes por Core. Es el paso 3 de "Próximos pasos"
 | EVAL-03 | idem | Una política tiny entrenada con BC unas iteraciones tiene una tasa de éxito mayor que la sin entrenar, contra Core + procesos `vla-env reach` (`core_con_procesos` del `conftest.py`) | `slow` |
 | EVAL-05 | idem | La config de evaluación: `--core-address` pisa `core.address`, y con checkpoint `normalizer.stats: fit` pasa a `<checkpoint>/policy` (nunca se re-ajusta contra el dataset del Core de evaluación); error claro si faltan las estadísticas; sin checkpoint, el último `step_*` | `fast` |
 | EVAL-04 | sbatch | π0 entrenado en LIBERO (`slurm/pi0_bc.sbatch`) evaluado en un subconjunto de tareas; se registra la tasa por tarea | cluster |
+| VID-01…05 | `vla_env/tests/test_env_video.py` | Videos por episodio desde `GymEnvironment` (ver `Test Environment.md`) | `fast` |
+| STATS-01…03 | `vla_core/tests/test_export_lerobot_stats.py` | Exportación de las estadísticas de un π0 de LeRobot al formato de `Pi0Policy` | `fast` |
+| VID-06 | `slurm/pi0_libero_video.sbatch` | Prueba de integración con videos: el π0 ya ajustado de LeRobot (`lerobot/pi0_libero_finetuned_v044`) por Core contra LIBERO; un MP4 por episodio, consistente con la tasa de éxito. **Pasó: job 35609, tasa 0,75 (6/8; 0/2 en la tarea de `libero_10`)** | cluster |
+
+**Videos (agregado a la fase).** Para ver a π0 actuar, y no solo contar éxitos:
+
+- `vla_env/video.py` (`EpisodeRecorder`), conectado a `GymEnvironment`, con `record:` en
+  la config y `vla-env --record DIR`;
+- `RECORD_DIR` en `pi0_libero_eval.sbatch`;
+- `scripts/export_lerobot_stats.py`, que lleva las estadísticas de un π0 de LeRobot al
+  formato de `normalizer.stats: <directorio>`;
+- `configs/pi0_libero_finetuned_eval.yaml` y `configs/env/libero_pi0_finetuned.yaml`, con
+  las cámaras con que se entrenó ese modelo;
+- `slurm/pi0_libero_video.sbatch`, que encadena todo y verifica los videos.
+
+Se usa el modelo ya ajustado porque el checkpoint propio (`pi0_libero_bc/step_000000`) es
+`pi0_base` casi sin entrenar: sus videos mostrarían movimientos al azar. Cuando haya un BC
+real sobre LIBERO, el mismo sbatch lo graba con `LEARNER_CONFIG`/`CHECKPOINT`.
 
 ### Cierre
 

@@ -1,0 +1,46 @@
+# π0 ya ajustado a LIBERO por LeRobot, para EVALUAR (no entrenar) por Core contra
+# procesos vla-env de LIBERO: scripts/eval_success.py con esta config.
+# Lo usa slurm/pi0_libero_video.sbatch (videos + tasa de éxito).
+#
+# Antes, una vez: las estadísticas de normalización del modelo, en el formato de
+# Pi0Policy (el modelo las trae en su pipeline de procesadores de LeRobot):
+#     uv run --extra pi0 python scripts/export_lerobot_stats.py \
+#         --source lerobot/pi0_libero_finetuned_v044 --out checkpoints/pi0_libero_finetuned_stats
+#
+# Carga los pesos reales de π0 (~7 GB bf16): va al cluster.
+seed: 0
+
+device: cuda
+
+# El sbatch pisa la dirección con un socket ipc:// del job (--core-address).
+core: {type: zmq, address: "tcp://localhost:5555", timeout_s: 120}
+
+policy:
+  type: pi0
+  pretrained: lerobot/pi0_libero_finetuned_v044
+  # Las claves con las que se entrenó (HuggingFaceVLA/libero); las sirve
+  # configs/env/libero_pi0_finetuned.yaml. La tercera cámara (empty_camera_0) la
+  # rellena y enmascara el modelo.
+  cameras: [observation.images.image, observation.images.image2]
+  image_size: 224
+  # float32: solo inferencia (~14 GB) y corre en GPUs sin bf16 por hardware (TITAN RTX,
+  # Turing), donde corre pi0_libero_video.sbatch. En A40/A100 puede ir bfloat16.
+  torch_dtype: float32
+  tokenizer: google/paligemma-3b-pt-224
+  # Igual que en BC: el optimizador (que no se usa) solo ve el action expert.
+  freeze: {trainable: [action]}
+  # Las estadísticas del propio modelo (exportadas con el script de arriba), no
+  # re-ajustadas: mean_std en estado y acción, como su norm_map.
+  normalizer: {mode: mean_std, stats: checkpoints/pi0_libero_finetuned_stats}
+
+# No se entrena; el Learner igual arma algoritmo, datos y optimizador.
+algorithm: {type: bc}
+data: {type: supervised, batch_size: 1}
+optimizer: {name: adamw, lr: 0.00005, grad_clip: 1.0, scheduler: null, precision: bf16}
+
+# Sin step_* en esta carpeta: eval_success.py evalúa los pesos de `pretrained`.
+checkpoint: {directory: checkpoints/pi0_libero_finetuned_eval, every: 1000000, keep_last: 1}
+
+available_cameras: [observation.images.image, observation.images.image2]
+
+num_iterations: 0

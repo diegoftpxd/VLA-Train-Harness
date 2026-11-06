@@ -9,7 +9,9 @@ las reglas del harness, para que ningún adaptador las repita:
 - el éxito sale de ``info["is_success"]`` del simulador (convención de
   Gymnasium) y viaja en ``info["success"]``;
 - la recompensa del simulador se ignora (la pone Core);
-- la acción se valida antes de mover nada, y un ``step`` tras un final es error.
+- la acción se valida antes de mover nada, y un ``step`` tras un final es error;
+- con un ``recorder`` (``record:`` en la config), cada episodio queda en un
+  video con un cuadro por acción (ver ``vla_env/video.py``).
 
 Un adaptador solo implementa ``_make`` (el simulador para una tarea) y
 ``_observation`` (traducir la observación cruda al tipo canónico), y
@@ -27,6 +29,7 @@ import numpy as np
 
 from vla_common.environment import Environment, EnvSpec, check_action_chunk, resolve_task
 from vla_common.types import ActionChunk, Observation, StepResult
+from vla_env.video import EpisodeRecorder
 
 
 def to_canonical_image(image: np.ndarray) -> np.ndarray:
@@ -55,6 +58,8 @@ class GymEnvironment(Environment):
         self._task = spec.tasks[0]
         self._actions_done = 0
         self._done = True  # sin reset todavía
+        # Lo asigna ``build_environment`` si la config trae ``record:``.
+        self.recorder: EpisodeRecorder | None = None
 
     # --- Lo que implementa cada adaptador ----------------------------------
 
@@ -81,13 +86,18 @@ class GymEnvironment(Environment):
         raw, _ = self._sim.reset(seed=seed)
         self._actions_done = 0
         self._done = False
-        return self._observation(raw, self._task)
+        observacion = self._observation(raw, self._task)
+        if self.recorder is not None:
+            self.recorder.start(self._task, seed)
+            self.recorder.add(observacion)
+        return observacion
 
     def step(self, actions: ActionChunk) -> StepResult:
         if self._done:
             raise RuntimeError("el episodio ya terminó (o no empezó); hace falta reset()")
         check_action_chunk(actions, self._spec.action_dim)
         raw: Any = None
+        observacion: Observation | None = None
         terminated = truncated = success = False
         for action in actions:
             raw, _, terminated, truncated, info = self._sim.step(
@@ -95,13 +105,18 @@ class GymEnvironment(Environment):
             )
             self._actions_done += 1
             success = self._success(info)
+            if self.recorder is not None:  # un cuadro por acción, no por chunk
+                observacion = self._observation(raw, self._task)
+                self.recorder.add(observacion)
             if terminated or truncated or success or self._actions_done >= self.max_steps:
                 break
         terminated = bool(terminated or success)
         truncated = not terminated and bool(truncated or self._actions_done >= self.max_steps)
         self._done = terminated or truncated
+        if self._done and self.recorder is not None:
+            self.recorder.finish(success)
         return StepResult(
-            observation=self._observation(raw, self._task),
+            observation=observacion or self._observation(raw, self._task),
             reward=None,  # la agrega Core
             terminated=terminated,
             truncated=truncated,
@@ -109,6 +124,8 @@ class GymEnvironment(Environment):
         )
 
     def close(self) -> None:
+        if self.recorder is not None:
+            self.recorder.abort()
         if self._sim is not None and hasattr(self._sim, "close"):
             self._sim.close()
         self._sim = None

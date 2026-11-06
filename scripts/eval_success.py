@@ -198,7 +198,7 @@ def main(argv: list[str] | None = None) -> int:
     original = yaml.safe_load(args.learner_config.read_text(encoding="utf-8"))
     checkpoint = args.checkpoint or latest_checkpoint(original)
     if checkpoint is None:
-        print("AVISO: sin checkpoint; se evalúa la política inicial.", file=sys.stderr)
+        print("AVISO: sin checkpoint; se evalúan los pesos de policy.pretrained.", file=sys.stderr)
     config = eval_config(original, checkpoint, args.core_address)
     policy = load_policy(config, checkpoint)
     core = config["core"]
