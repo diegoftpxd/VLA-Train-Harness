@@ -17,9 +17,10 @@ import dataclasses
 from collections.abc import Callable
 from typing import Any
 
+from vla_common.environment import Environment, check_action_chunk
 from vla_common.types import ActionChunk, Observation, StepResult, Transition
 from vla_core.dataset import AppendableDataset, Dataset
-from vla_core.environments import Environment, EnvironmentRegistry
+from vla_core.environments import EnvironmentRegistry
 from vla_core.episodes import EpisodeManager, EpisodeStore
 from vla_core.errors import (
     DatasetNotAppendable,
@@ -61,9 +62,10 @@ class Core:
     def step(
         self, env_ids: list[str], actions: list[ActionChunk], with_reward: bool
     ) -> list[StepResult]:
-        # Pre-chequeo antes de tocar ningún ambiente: disponibilidad y regla de
-        # episodio (no se puede pisar un episodio ya terminado).
-        for env_id in env_ids:
+        # Pre-chequeo antes de tocar ningún ambiente: disponibilidad, regla de
+        # episodio (no se puede pisar un episodio ya terminado) y forma de cada
+        # acción contra el spec (un chunk mal formado nunca llega a un robot).
+        for env_id, chunk in zip(env_ids, actions, strict=True):
             if not self._environments.is_available(env_id):
                 raise DownstreamUnavailable(
                     f"ambiente {env_id!r} no disponible; hace falta recuperarlo"
@@ -72,6 +74,13 @@ class Core:
                 raise EpisodeAlreadyDone(
                     f"el episodio de {env_id!r} ya terminó; hace falta reset()"
                 )
+            # El spec puede venir de un proceso remoto: se pide por _usar_ambiente
+            # para que su caída se escale igual que la de reset/step.
+            action_dim = self._usar_ambiente(env_id, lambda env: env.spec.action_dim)
+            try:
+                check_action_chunk(chunk, action_dim)
+            except ValueError as error:
+                raise ValueError(f"ambiente {env_id!r}: {error}") from error
 
         # Ejecuta cada chunk en su ambiente (el StepResult viene sin recompensa).
         pendientes: list[tuple[str, ActionChunk, Observation, StepResult]] = []
@@ -207,8 +216,9 @@ class Core:
         """Gancho de episodios exitosos: reinyecta un episodio en el Dataset.
 
         Toma las transiciones que Core registró para ``episode_id``, aplica el
-        filtro de éxito (el episodio terminó por ``terminated``, es decir alcanzó
-        la meta —no por ``truncated``—) y agrega sus pares ``(observación,
+        filtro de éxito (la última transición tiene ``info["success"]``; un
+        ``terminated`` solo no alcanza, porque un episodio también termina por
+        fallo) y agrega sus pares ``(observación,
         acción)`` al Dataset como demos supervisadas. Devuelve cuántos pares se
         agregaron (``0`` si el episodio no fue exitoso).
 
@@ -226,8 +236,8 @@ class Core:
 
     @staticmethod
     def _episode_succeeded(transitions: list[Transition]) -> bool:
-        """Éxito = el episodio terminó alcanzando la meta (``terminated``)."""
-        return bool(transitions) and transitions[-1].result.terminated
+        """Éxito = la última transición lo marca en ``info["success"]``."""
+        return bool(transitions) and bool(transitions[-1].result.info.get("success", False))
 
     def get_episode(self, episode_id: str) -> list[Transition]:
         return self._store.get(episode_id)

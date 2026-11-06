@@ -25,6 +25,9 @@ la misma.
 | `pi0_smoke.sbatch` | 1 | sí | Prueba de entrenamiento mínimo de π0: unos pasos de BC con solo el *action expert* entrenable (resto congelado) |
 | `pi0_bc.sbatch` | 1 | sí | Core + Learner π0 (BC) en el mismo nodo, con un dataset real servido por Core (pusht o LIBERO) |
 | `pi0_check_embed.sbatch` | 1 | sí | Verifica que el `embed_tokens` de π0 esté atado a `lm_head` y cargado (el warning `Could not remap state dict keys` es inofensivo); no entrena |
+| `pi0_libero_eval.sbatch` | 1 | sí | Tasa de éxito de π0 en LIBERO: N `vla-env` LIBERO + Core + `scripts/eval_success.py`, por sockets `ipc://` del job (`TASKS` obligatoria, `CHECKPOINT` opcional) |
+| `pi0_libero_video.sbatch` | 1 | sí | Prueba de integración con videos: π0 ya ajustado de LeRobot por Core contra LIBERO, un MP4 por episodio (vía `pi0_libero_eval.sbatch` con `RECORD_DIR`), y verificación de los videos contra la tasa de éxito |
+| `libero_env_check.sbatch` | 1 | sí (render EGL) | Chequeo del ambiente LIBERO (`vla-env`, venv `.venv-env`): smoke, suites ENV/SRVE contra el simulador real y comparación MAP con el dataset convertido |
 | `train_openvla_bc.sbatch` | 1 | sí | Core + Learner en el mismo nodo (OpenVLA BC) |
 | `core.sbatch` + `learner.sbatch` | 2 | sí (Learner) | Core en CPU y Learner en GPU, en nodos separados |
 
@@ -153,6 +156,63 @@ sbatch --dependency=after:${CORE_JID} slurm/learner.sbatch ${CORE_JID}
 
 El `--dependency=after` hace que el Learner arranque una vez que el Core empezó
 (no espera a que termine: el Core es un servidor de larga duración).
+
+### Chequeo del ambiente LIBERO (GPU para el render)
+
+Antes de evaluar o entrenar contra LIBERO, comprueba el ambiente real: arranca el
+simulador (`vla-env --smoke`), corre las suites ENV y SRVE contra él y lo compara con
+el dataset convertido (suite MAP: cámaras, estado, orientación, instrucciones). Usa su
+propio venv (`.venv-env`, extra `libero`) y escribe la config de LIBERO en `.libero/`
+(si falta, LIBERO la pediría por teclado y colgaría el job).
+
+```bash
+sbatch slurm/libero_env_check.sbatch
+DATA_DIR=data/pi0_libero STEPS=50 sbatch slurm/libero_env_check.sbatch
+```
+
+La salida del smoke lista las tareas del `spec`: son los nombres que pide `TASKS` abajo.
+
+> **Primera instalación de `.venv-env`: en el nodo de login.** Los nodos de cómputo no
+> tienen `cmake`, y `egl-probe` (vía `hf-libero` → `robomimic`) solo viene como sdist, así
+> que se compila al instalar (el job 35442 falló por eso). Una vez, desde la raíz del repo:
+>
+> ```bash
+> UV_PROJECT_ENVIRONMENT=.venv-env uv sync --extra libero
+> ```
+
+### Tasa de éxito de π0 en LIBERO (GPU)
+
+Levanta en el nodo N procesos `vla-env` de LIBERO, un Core conectado a ellos y
+`scripts/eval_success.py` con el checkpoint, todos por sockets `ipc://` del job. Cuenta
+los episodios exitosos (`info["success"]`) por tarea y deja un JSON en `slurm/logs/`.
+Usa las estadísticas del normalizador guardadas en el checkpoint, no las recalcula.
+
+```bash
+TASKS="<tarea 1>|<tarea 2>" sbatch slurm/pi0_libero_eval.sbatch
+TASKS="..." CHECKPOINT=checkpoints/pi0_libero_bc/step_001000 N_ENVS=4 EPISODES=20 \
+    sbatch slurm/pi0_libero_eval.sbatch
+```
+
+### Videos de π0 en LIBERO (GPU)
+
+Prueba de integración con pesos reales. Usa el π0 ya ajustado a LIBERO por LeRobot
+(`lerobot/pi0_libero_finetuned_v044`), así se ve a la política resolver tareas. El job:
+
+1. exporta las estadísticas de normalización del modelo al formato de `Pi0Policy`
+   (`scripts/export_lerobot_stats.py`, en `checkpoints/pi0_libero_finetuned_stats`);
+2. corre `pi0_libero_eval.sbatch` con `RECORD_DIR`: cada `vla-env` graba un MP4 por
+   episodio (`--record`), con un cuadro por acción y las dos cámaras lado a lado;
+3. verifica que haya un video legible por episodio, ninguno incompleto, y tantos
+   `_success` como éxitos cuenta el JSON.
+
+```bash
+sbatch slurm/pi0_libero_video.sbatch                                     # 4 tareas × 2 episodios
+TASKS="put the bowl on the plate" EPISODES=5 sbatch slurm/pi0_libero_video.sbatch
+```
+
+Videos en `slurm/logs/pi0-libero-video-<JOBID>/libero-<i>/<NNNN>_<tarea>_seed<S>_{success,fail}.mp4`.
+Necesita el login de HF del tokenizer de PaliGemma (ver arriba). `RECORD_DIR` también
+sirve directo con `pi0_libero_eval.sbatch` y cualquier checkpoint.
 
 ## Logs y artefactos
 

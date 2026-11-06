@@ -325,6 +325,14 @@ La tubería de datos ya está probada con dos corpus reales: lo que falta es que
    `Architecture.md` antes de optimizar el transporte.
 3. **Evaluación en simulación.** La pérdida no dice si el robot cumple la tarea. Hace
    falta un **Environment real de LIBERO** (proceso aparte con MuJoCo/robosuite que
-   implemente `reset`/`step`/`close` y pase la suite ENV) y correr el checkpoint contra
+   implemente `reset`/`step`/`close` y pase la suite ENV; diseño y fases en
+   `docs/environment/Environment Design.md`) y correr el checkpoint contra
    las 40 tareas para medir la tasa de éxito. Es el primer componente real fuera de
    Core y el Learner, y abre el camino al RL en ambiente (PPO/GRPO) con π0.
+   **Estado:** implementado (rama `Environment`, fases 5 y 6 del plan de
+   `docs/environment/`). En el cluster, `slurm/libero_env_check.sbatch` pasó (job 35443:
+   ENV/SRVE contra LIBERO real y suite MAP contra `data/pi0_libero`), y la evaluación
+   con videos (`slurm/pi0_libero_video.sbatch`, job 35609) corrió el π0 ya ajustado de
+   LeRobot con tasa 0,75 (6/8). Falta evaluar un π0 entrenado por nosotros
+   (EVAL-04), que depende del paso 2. Para RL con π0 hay prerrequisitos abiertos: π0 no
+   da log-probabilidades (ver "Prerrequisitos para RL sobre LIBERO" del plan).

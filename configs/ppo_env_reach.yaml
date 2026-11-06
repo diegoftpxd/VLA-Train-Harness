@@ -1,0 +1,39 @@
+# PPO tiny contra ambientes que son procesos vla-env, a través de un Core real.
+# Mismo entrenamiento que ppo_tiny.yaml, pero con el Environment fuera de Core
+# (ver docs/environment/Environment Design.md). Cuatro terminales:
+#
+#   uv run vla-env --config configs/env/reach.yaml --address tcp://127.0.0.1:5601
+#   uv run vla-env --config configs/env/reach.yaml --address tcp://127.0.0.1:5602
+#   uv run vla-core --config configs/core/env_reach.yaml
+#   uv run vla-learner --config configs/ppo_env_reach.yaml
+#
+# Los env_ids son los que declara configs/core/env_reach.yaml.
+seed: 0
+
+core: {type: zmq, address: "tcp://127.0.0.1:5555", timeout_s: 30.0}
+
+policy:
+  type: composed
+  action_dim: 2
+  chunk_size: 1
+  feature_dim: 16
+  backbone: {type: tiny, seq_len: 1}
+  action_head: {type: gaussian}
+  processor: {type: simple, cameras: [front]}
+  normalizer: {mode: mean_std}
+  value_head: {hidden_dim: 16}
+
+algorithm:
+  type: ppo
+  clip_ratio: 0.2
+  update_epochs: 2
+  minibatch_size: 32
+  advantage: {type: gae, gamma: 0.99, lam: 0.95}
+
+data: {type: env_rollout, env_ids: [reach-0, reach-1], steps_per_batch: 16}
+
+optimizer: {name: adamw, lr: 0.0003, grad_clip: 1.0, scheduler: null, precision: fp32}
+
+checkpoint: {directory: checkpoints/ppo_env_reach, every: 50, keep_last: 2}
+
+num_iterations: 5

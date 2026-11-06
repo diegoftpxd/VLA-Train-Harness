@@ -64,3 +64,18 @@ def test_local_openvla_sirve_demos_compatibles() -> None:
             assert chunk[0].values.shape == (7,)
         finally:
             client.close()
+
+
+def test_cfg04_env_reach_se_construye() -> None:
+    # Sus ambientes son procesos vla-env aparte (ver test_env_processes.py): aquí
+    # solo se verifica que el YAML arma el registro con los ids declarados.
+    with _servir("env_reach.yaml"):
+        pass
+    config = yaml.safe_load((CONFIGS / "env_reach.yaml").read_text(encoding="utf-8"))
+    assert [e["id"] for e in config["environments"]] == ["reach-0", "reach-1"]
+
+
+def test_cfg04_libero_se_construye() -> None:
+    # Ambientes en procesos aparte (extra `libero`, cluster): solo se arma el registro.
+    with _servir("libero.yaml"):
+        pass

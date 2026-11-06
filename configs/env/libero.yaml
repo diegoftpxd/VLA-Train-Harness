@@ -1,0 +1,21 @@
+# Proceso Environment con LIBERO (las 40 tareas de lerobot/libero), para evaluar
+# y entrenar π0 sobre el mismo benchmark de su dataset. Ver
+# docs/environment/Environment Design.md (sección "LIBERO").
+#
+# Necesita el extra `libero` y corre en su PROPIO venv (como Core usa .venv-core):
+#     UV_PROJECT_ENVIRONMENT=.venv-env uv run --extra libero \
+#         vla-env --config configs/env/libero.yaml --smoke 20 --save out/libero_smoke
+# En un nodo sin pantalla: MUJOCO_GL=egl (u osmesa sin GPU). Todo junto, con la
+# suite ENV y la comparación con el dataset: sbatch slurm/libero_env_check.sbatch
+#
+# Las cámaras usan los MISMOS nombres canónicos que el dataset convertido
+# (configs/core/pi0_libero.yaml): una política entrenada ahí las reconoce.
+server: { address: "tcp://127.0.0.1:5601" }
+environment:
+  type: libero
+  suites: [libero_spatial, libero_object, libero_goal, libero_10]
+  cameras: # nombre canónico -> cámara de LIBERO
+    observation.images.base_0_rgb: agentview_image
+    observation.images.left_wrist_0_rgb: robot0_eye_in_hand_image
+  image_size: 256
+  smoke_action: [0, 0, 0, 0, 0, 0, -1] # no-op de LIBERO (gripper abierto)

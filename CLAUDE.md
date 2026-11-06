@@ -4,7 +4,24 @@ Harness para entrenar modelos VLA (vision-language-action) con aprendizaje super
 
 ## Estado del proyecto
 
-**En curso — Dataset y π0 (rama `Dataset`).** Adaptadores de dataset (`fake`, `local`, `lerobot`, `openx`; ver `docs/dataset/Dataset Design.md`), el adaptador `Pi0Policy` en el Learner y la prueba E2E de dos procesos de `docs/dataset/Pi0 E2E Plan.md`. Esa prueba **pasó en el cluster** (job 35206): Core sirve `pusht` convertido a `local` (`scripts/prepare_lerobot_local.py`) y el Learner entrena π0 con BC, con `fm_mse`/`grad_norm` finitos en los 10 pasos. Se corre con `slurm/pi0_bc.sbatch` (ver `slurm/README.md`). Después de esa corrida, `Pi0Policy` pasó a normalizar acciones y estado (`mean_std`, estadísticas con `normalizer.stats: fit`, dentro de la política como pide `Learner Design.md`) y a cargar el tokenizer de PaliGemma. Está cubierto por la suite `fast` y **verificado en el cluster** (job 35229): `fm_mse` bajó de ~2500–7500 a ~0,06–0,13 y `grad_norm` de ~500–1000 a ~1–3. El tokenizer está en un repo de HF con acceso restringido: hay que autenticarse con `HF_HOME=.hf_cache` (ver `slurm/README.md`). **Segundo dataset real: LIBERO** (`lerobot/libero`, demos exitosas, 40 tareas, 2 cámaras): se convierte con `scripts/prepare_lerobot_local.py` (generalizado desde el script de pusht) y π0 entrenó sobre 200 episodios en el job 35231 (`fm_mse` 0,11–0,28). El warning `Could not remap state dict keys` es inofensivo: el `embed_tokens` que reporta faltante está atado a `lm_head` y queda cargado (job 35263, `slurm/pi0_check_embed.sbatch`). Lo que sigue (BC real sobre LIBERO, luego un Environment de LIBERO para evaluar) está en "Próximos pasos" del plan.
+**En curso — Dataset y π0 (rama `Dataset`, ya fusionada en `main` por el PR #4).** Adaptadores de dataset (`fake`, `local`, `lerobot`, `openx`; ver `docs/dataset/Dataset Design.md`), el adaptador `Pi0Policy` en el Learner y la prueba E2E de dos procesos de `docs/dataset/Pi0 E2E Plan.md`. Esa prueba **pasó en el cluster** (job 35206): Core sirve `pusht` convertido a `local` (`scripts/prepare_lerobot_local.py`) y el Learner entrena π0 con BC, con `fm_mse`/`grad_norm` finitos en los 10 pasos. Se corre con `slurm/pi0_bc.sbatch` (ver `slurm/README.md`). Después de esa corrida, `Pi0Policy` pasó a normalizar acciones y estado (`mean_std`, estadísticas con `normalizer.stats: fit`, dentro de la política como pide `Learner Design.md`) y a cargar el tokenizer de PaliGemma. Está cubierto por la suite `fast` y **verificado en el cluster** (job 35229): `fm_mse` bajó de ~2500–7500 a ~0,06–0,13 y `grad_norm` de ~500–1000 a ~1–3. El tokenizer está en un repo de HF con acceso restringido: hay que autenticarse con `HF_HOME=.hf_cache` (ver `slurm/README.md`). **Segundo dataset real: LIBERO** (`lerobot/libero`, demos exitosas, 40 tareas, 2 cámaras): se convierte con `scripts/prepare_lerobot_local.py` (generalizado desde el script de pusht) y π0 entrenó sobre 200 episodios en el job 35231 (`fm_mse` 0,11–0,28). El warning `Could not remap state dict keys` es inofensivo: el `embed_tokens` que reporta faltante está atado a `lm_head` y queda cargado (job 35263, `slurm/pi0_check_embed.sbatch`). Lo que sigue (BC real sobre LIBERO, y evaluarlo con el Environment de LIBERO, EVAL-04) está en "Próximos pasos" del plan.
+
+**En curso — Environment (rama `Environment`).** `docs/environment/Environment Design.md` define el componente:
+- un paquete propio que **no depende de `vla_core`** (los dos se encuentran solo en `vla_common`, que pasa a tener el contrato `Environment`/`EnvSpec`, el protocolo `handle_environment` y la suite ENV);
+- la base `GymEnvironment` para simuladores;
+- `EnvironmentServer` y la CLI `vla-env` (con `--smoke` para probar un ambiente sin Core);
+- el adaptador de referencia `ReachEnvironment` y el primer ambiente real, LIBERO, sobre `hf-libero`;
+- las convenciones `info["success"]` e imágenes `float32` CHW en `[0, 1]`.
+
+Se implementa siguiendo `docs/environment/Environment Implementation Plan.md`. Avance:
+- ✅ **Fase 1:** contrato en `vla_common.environment` (con `check_action_chunk` y `resolve_task`), suite ENV-01…11 en `vla_common/testing/contracts/`, `FakeEnvironment` con corte a mitad de chunk y `success`, Core valida `action_dim` y reinyecta por `success`.
+- ✅ **Fase 2:** paquete `packages/vla_env` (depende solo de `vla-common`, `pyzmq`, `numpy`, `pyyaml`): `GymEnvironment` + `to_canonical_image`, `ReachEnvironment` (`type: reach`, plantilla), `EnvironmentServer`, `build_environment` y la CLI `vla-env` (`--smoke`, `--save`, `--address`); `configs/env/reach.yaml`. Suites GYM, SRVE, CLI, ARCH-ENV en `fast`.
+- ✅ **Fase 3:** Core arma su registro desde `environments:`/`timeouts:` (`build_environments`, sin autoregistro) y `CoreServer.shutdown()` cierra los ambientes al salir de `vla-core`; `configs/core/env_reach.yaml`. Suites CFG (`fast`) y DIST (`distributed`, contra procesos `vla-env` reales).
+- ✅ **Fase 4:** el Learner real entrena por Core contra 16 procesos `vla-env` con los mismos umbrales que la E2E (`test_e2e_env.py`, `slow`): RL en ambiente, RL en world model con inicios reales y reinyección de episodios. Flujo manual de cuatro procesos en `configs/ppo_env_reach.yaml`. `start_selector: reset` no sirve con ambientes declarados (ver "Decisiones abiertas" de `Environment Design.md`).
+- ✅ **Fase 5 (verificada en el cluster, job 35443):** `LiberoEnvironment` (`type: libero`, extra `libero` = `hf-libero`), mapeo en numpy (LIB-01…04, 08, 09 en `fast`), `ensure_libero_config` (evita el `input()` de LIBERO), `configs/env/libero.yaml`, `configs/core/libero.yaml`, `scripts/check_env_vs_dataset.py` (suite MAP) y el test `heavy` genérico `test_env_from_config.py`. `slurm/libero_env_check.sbatch` pasó entero: smoke (40 tareas en el `spec`, ~24 ms por paso), ENV/SRVE contra LIBERO real (23 tests) y MAP-01…05 contra `data/pi0_libero` (MAP-04 confirma la rotación de 180°: correlación 0,95/0,90 contra −0,22/−0,15 sin rotar). **Ojo al instalar:** los nodos de cómputo no tienen `cmake` y `egl-probe` (vía `hf-libero` → `robomimic`) solo viene como sdist, así que la primera vez `.venv-env` se instala en el nodo de login: `UV_PROJECT_ENVIRONMENT=.venv-env uv sync --extra libero` (el job 35442 falló por eso). Los assets de LIBERO se bajan solos de HF a `~/.cache/libero/assets`.
+- 🟡 **Fase 6 (local hecha, falta el cluster):** `scripts/eval_success.py` (tasa de éxito por tarea, por Core, contando `info["success"]`; usa las estadísticas del checkpoint) y `slurm/pi0_libero_eval.sbatch`. Suite EVAL-01…03, 05 (`fast`/`slow`). **Prueba de integración con videos (VID-06) pasada en el cluster (job 35609, `hydra`, TITAN RTX):** `slurm/pi0_libero_video.sbatch` corre el π0 ya ajustado de LeRobot (`lerobot/pi0_libero_finetuned_v044`, estadísticas exportadas con `scripts/export_lerobot_stats.py`, `float32`) por Core contra 2 procesos `vla-env` LIBERO que graban un MP4 por episodio (`vla_env/video.py`, `--record`). Tasa 0,75 (6/8): spatial, object y goal 2/2; la tarea larga de `libero_10` 0/2. `Pi0Policy` carga π0 sin `torch.compile` (en Turing aborta). Los sbatch de π0 piden la GPU por tipo (`antuco` tiene AMD MI210 y torch es CUDA). **Pendiente:** EVAL-04, evaluar un π0 entrenado por nosotros (`pi0_bc.sbatch`) en LIBERO.
+
+Todo lo local está cerrado y verificado (`fast`, `distributed`, `slow`). Lo único pendiente es la corrida de cluster de la fase 6, y las decisiones de "Prerrequisitos para RL sobre LIBERO" del plan.
 
 **Terminado — Core (`packages/vla_core`).** Las siete fases del plan: diseño y transporte (`CoreServer`/`dispatch_request`), componentes y clientes `DEALER` (Environment, WorldModel, Reward Model, Dataset, EpisodeStore) con sus fakes, el gateway `Core` (`reset`/`step`/`simulate`/`sample_supervised`/`get_episode`), el gancho de episodios exitosos, el manejo de fallas (timeouts, reconexión, parada de seguridad, multi-ambiente), la CLI `vla-core` con configs de ejemplo y la integración extremo a extremo con el Learner real. Pasa las suites de contrato (`fast`), `distributed` y la E2E (`slow`).
 
@@ -22,6 +39,9 @@ Léelos antes de empezar cualquier tarea. Ante cualquier duda, manda el document
 - `docs/core/Core Design.md`: **a escribir en la Fase 1.** Clases e interfaces internas de Core, derivadas de `Architecture.md`, al nivel de detalle que tiene `Learner Design.md`. Es la especificación a implementar.
 - `docs/core/Test Core.md`: **a escribir en la Fase 1.** Suites de contrato que toda implementación de Core y de sus componentes debe pasar, al estilo de `Test Learners.md`.
 - `docs/learner/Learner Design.md` y `docs/learner/Test Learners.md`: referencia. Core debe honrar el `CoreClientProtocol` y el formato de wire que estos describen; no los contradigas.
+- `docs/environment/Environment Design.md`: **la especificación del componente Environment** (paquete `vla_env`, contrato en `vla_common`, convenciones, cómo agregar un ambiente o un robot, LIBERO).
+- `docs/environment/Test Environment.md`: **suites que todo ambiente debe pasar** (ENV, GYM, SRVE, CLI, MAP, ROBOT, ARCH) y cuáles corresponden a cada tipo de implementación.
+- `docs/environment/Environment Implementation Plan.md`: **el plan para implementarlo**, fase por fase: archivos, tests con su ID, integración con Core/Learner/Dataset/WorldModel/Reward Model, criterio de cierre y riesgos.
 - Cada componente tiene su carpeta en `docs/` (`docs/core/`, `docs/learner/`, `docs/environment/`, `docs/world-model/`, `docs/reward-model/`, `docs/dataset/`), con un `README.md` que lo resume y apunta a su sección de `Architecture.md`. `Architecture.md` queda en la raíz de `docs/` porque es transversal.
 
 Si al implementar necesitas desviarte del diseño (una firma, un tipo, una clase nueva), actualiza el documento en el mismo cambio y explica el motivo en tu resumen. No dejes código y documento en desacuerdo. **Si el cambio toca el protocolo, actualiza también el `CoreClient` del Learner y su suite CORE**: el cliente y el servidor no pueden divergir.
@@ -31,6 +51,7 @@ Si al implementar necesitas desviarte del diseño (una firma, un tipo, una clase
 **Dentro:**
 
 - **El proceso Core** (`packages/vla_core`): servidor ZeroMQ `ROUTER` que expone la interfaz del Learner; despacho de llamadas; registro de ambientes (`env_id`, disponibilidad, espacio de acciones y cámaras declarados al registrarse); estado por episodio (paso actual, observación anterior); agregación de recompensa (`with_reward`); servicio de datos supervisados desde el Dataset; almacén de episodios (`append`/`get`); manejo de fallas (timeouts, caídas, reintentos, parada de seguridad).
+- **El componente Environment** (`packages/vla_env`): la base `GymEnvironment`, los adaptadores (`reach`, `libero`), `EnvironmentServer` y la CLI `vla-env`. Su contrato y su protocolo viven en `vla_common`; ver `docs/environment/`.
 - **Clientes hacia abajo de Core**: cómo Core llama por ZeroMQ (`DEALER`) a Environment (`reset`/`step`/`close`), WorldModel (`encode`/`rollout`), Reward Model (`score`) y cómo accede al Dataset y al almacén de episodios.
 - **Herramientas de prueba de Core** (análogas a las del Learner): fakes en memoria y servidores ZeroMQ fake de Environment, WorldModel y Reward Model; un Dataset fake y un almacén de episodios de prueba; generadores de datos; y las suites de contrato en `testing/contracts/`.
 - **CLI** `vla-core` y configs YAML de ejemplo.
@@ -73,29 +94,36 @@ docs/                       # documentos de diseño, una carpeta por componente
   Architecture.md           # visión general, transversal a todos los componentes
   core/                     # Core Design.md, Test Core.md (Fase 1) + README
   learner/                  # Learner Design.md, Test Learners.md + README
-  environment/              # README (componente fuera de alcance; se usa un fake)
-  world-model/              # README (idem)
+  environment/              # Environment Design.md, Test Environment.md, Environment Implementation Plan.md + README
+  world-model/              # README (componente fuera de alcance; se usa un fake)
   reward-model/             # README (idem)
   dataset/                  # README (vive dentro de Core en v1)
 configs/                    # YAML de ejemplo
   core/                     # configs de Core (nuevos)
+  env/                      # configs de procesos vla-env
 packages/
-  vla_common/               # tipos compartidos y protocolo (SIN torch, SIN zmq propio del Learner)
+  vla_common/               # tipos compartidos, protocolo y contrato del Environment (SIN torch, SIN zmq)
+  vla_env/                  # procesos Environment: GymEnvironment, adaptadores, EnvironmentServer, CLI vla-env (NO depende de vla_core)
   vla_learner/              # proceso Learner (TERMINADO)
-  vla_core/                 # proceso Core (FASE ACTUAL)
+  vla_core/                 # proceso Core (TERMINADO)
     src/vla_core/
-      server.py             # servidor ROUTER: recibe del Learner, despacha, responde
-      gateway.py            # lógica de Core: enruta, agrega recompensa, registra
-      registry.py           # registro de ambientes (env_id, disponibilidad, specs)
+      server.py             # CoreServer (ROUTER): recibe del Learner, despacha, responde; shutdown
+      core.py               # Core (gateway): enruta, valida acciones, agrega recompensa, registra
+      environments.py       # EnvironmentRegistry y EnvironmentClient (DEALER hacia vla-env)
+      world_model.py        # WorldModel (ABC) y su cliente
+      reward.py             # RewardModel (ABC), su cliente y RewardScorer
       episodes.py           # estado por episodio y almacén de episodios (append/get)
-      clients/              # clientes DEALER hacia Environment, WorldModel, Reward Model
-      dataset/              # Dataset dentro de Core (fake por ahora)
+      dataset/              # Dataset dentro de Core: fake, local, lerobot, openx
+      rpc.py                # RpcChannel (DEALER + timeout + reintentos), RouterServer
+      builder.py            # build_core, build_environments (bloques environments/timeouts)
       cli.py
       testing/              # fakes (Environment/WorldModel/RewardModel/Dataset), suites de contrato
-    tests/
+    tests/                  # conftest.py lanza procesos vla-env para distributed/slow
+scripts/                    # prepare_lerobot_local, check_env_vs_dataset (MAP), eval_success
+slurm/                      # sbatch del cluster (π0, chequeo de LIBERO, evaluación)
 ```
 
-`vla_common` existe porque Core y el Learner usan los mismos tipos y el mismo protocolo. **Nada de `vla_common` puede depender de `torch`.** Las suites de contrato de Core viven en `vla_core/src/vla_core/testing/contracts/`, no en `tests/`, porque implementaciones futuras (un Environment real, un Dataset real) las importan.
+`vla_common` existe porque Core y el Learner usan los mismos tipos y el mismo protocolo. **Nada de `vla_common` puede depender de `torch`.** Las suites de contrato de Core viven en `vla_core/src/vla_core/testing/contracts/`, no en `tests/`, porque implementaciones futuras (un Dataset real, un WorldModel real) las importan. La suite ENV es la excepción: vive en `vla_common/src/vla_common/testing/contracts/`, porque la importan `vla_core` y `vla_env`, y ninguno de los dos depende del otro.
 
 ## Protocolo: reglas que Core no puede romper
 
@@ -139,13 +167,13 @@ Reglas:
 
 ## Orden de implementación
 
-Cada fase termina con `uv run pytest -m fast`, ruff y pyright en verde, y un commit. No empieces una fase con la anterior en rojo. El trabajo va en la rama `Core`.
+Cada fase termina con `uv run pytest -m fast`, ruff y pyright en verde, y un commit. No empieces una fase con la anterior en rojo. Core se hizo en la rama `Core`; el Environment va en la rama `Environment` con su propio plan (`docs/environment/Environment Implementation Plan.md`).
 
 1. ✅ **Diseño y base.** `docs/core/Core Design.md` y `docs/core/Test Core.md`. Paquete `vla_core` (CLI `vla-core`, sin torch). Servidor `ROUTER` que reutiliza `vla_common` y responde `ok`/`error`, con round-trips contra el `CoreClient` real. Suite SRV.
 2. ✅ **Componentes y clientes hacia abajo.** Interfaces que Core consume (Environment, WorldModel, Reward Model, Dataset, almacén de episodios) y sus clientes `DEALER`. Fakes en memoria y como servidores ZeroMQ. Registro de ambientes. Incluyó `EpisodeManager`/`EpisodeStore` (adelantados) y las suites ENV/WM/RM/DSET/STORE/EP.
 3. ✅ **Gateway Core: ciclo de episodios.** `Core.reset`, `Core.step` (enruta por ambiente, respeta la regla de episodio terminado, batchea `score` una vez, registra transiciones con `source="env"`) y `Core.get_episode`. Absorbió el `reset`/`step` que el plan tenía aparte. La suite CORE del Learner se reusa contra el Core real (incluye CORE-03, episodio terminado).
 4. ✅ **`simulate` sobre el WorldModel.** `Core.simulate` resuelve el inicio (observación o `(episode_id, step)`), `WorldModel.encode` + `rollout` (devuelve `StepResult` por chunk, con terminación), puntúa con el mismo Reward Model en una sola llamada. `rollout` se ajustó para devolver `StepResult` (ver `Core Design.md`). Suite SIM (directa y por la red).
-5. ✅ **Dataset supervisado.** `Core.sample_supervised(n, filters?)` delega en el Dataset (`source="dataset"`, acciones en unidades reales, filtro `task`). El gancho `Core.ingest_episode` reinyecta episodios exitosos (`terminated`) sobre `AppendableDataset` (`DatasetNotAppendable` si no lo es). Suite DSET a nivel de Core (incluye round-trip por la red).
+5. ✅ **Dataset supervisado.** `Core.sample_supervised(n, filters?)` delega en el Dataset (`source="dataset"`, acciones en unidades reales, filtro `task`). El gancho `Core.ingest_episode` reinyecta episodios exitosos (hoy por `info["success"]`, desde la fase 1 del Environment) sobre `AppendableDataset` (`DatasetNotAppendable` si no lo es). Suite DSET a nivel de Core (incluye round-trip por la red).
 6. ✅ **Fallas y robustez.** `RpcChannel` con timeout + reintentos + reconexión (`DownstreamTimeout`); `Core` escala la caída de un ambiente a `DownstreamUnavailable`, lo marca no disponible e invoca su parada de seguridad sin romper al resto; timeouts/reintentos por componente fijados y configurables (`Core Design.md`, "Manejo de fallas"). Suites FAIL (`fast`) y el test `distributed` (multi-ambiente por la red).
 7. ✅ **Integración extremo a extremo.** `vla-core` con configs de ejemplo (`configs/core/*.yaml`, validados por un test `fast`) y el Learner real conduciendo un Core real con fakes por ZeroMQ en los tres flujos. Suite E2E (`slow`): el entrenamiento avanza en supervisado, RL en ambiente y RL en world model.
 

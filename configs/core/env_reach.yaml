@@ -1,0 +1,16 @@
+# Core conectado a dos procesos Environment `reach` (vla-env), resto de
+# componentes fake. Ver docs/environment/Environment Design.md.
+#
+# Tres terminales (el orden no importa: Core conecta al primer uso):
+#   uv run vla-env --config configs/env/reach.yaml --address tcp://127.0.0.1:5601
+#   uv run vla-env --config configs/env/reach.yaml --address tcp://127.0.0.1:5602
+#   uv run vla-core --config configs/core/env_reach.yaml
+#
+# Con el bloque `environments`, solo existen los env_id declarados (sin
+# autoregistro). El Learner los usa por su id (p. ej. configs/ppo_env_reach.yaml).
+server: { address: "tcp://127.0.0.1:5555" }
+backend: { type: fake }
+environments:
+  - { id: reach-0, address: "tcp://127.0.0.1:5601" }
+  - { id: reach-1, address: "tcp://127.0.0.1:5602" }
+timeouts: { environment_s: 5, retries: 1 }

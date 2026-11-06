@@ -467,21 +467,25 @@ class _LeRobotPi0Model(nn.Module):
         # ``config.dtype``. Un ``.to(dtype)`` GLOBAL lo rompería: convertiría esas
         # proyecciones a bf16 y chocarían con el ruido float32 ("mat1 and mat2 must
         # have the same dtype"). Por eso la precisión se fija vía config, no con ``.to``.
-        config = None
+        # Se carga por la clase BASE del registro (``PreTrainedConfig``), no por la
+        # subclase ``PI0Config``: ``PreTrainedConfig.from_pretrained`` consume el
+        # discriminador ``"type": "pi0"`` del ``config.json`` para elegir la subclase
+        # y devuelve igual un ``PI0Config``. Llamar ``from_pretrained`` sobre la
+        # subclase pasa por un atajo de LeRobot (``draccus.parse(cls)``) que con
+        # draccus 0.8 no consume ese ``type`` y revienta con ``DecodingError: The
+        # fields 'type' are not valid for PI0Config``. El ``cast`` es solo para el
+        # tipado de ``dtype``/``compile_model``.
+        config = cast(PI0Config, PreTrainedConfig.from_pretrained(str(source)))
+        # Sin ``torch.compile``: los π0 ya ajustados de LeRobot (p. ej.
+        # ``pi0_libero_finetuned_v044``) traen ``compile_model: true`` con
+        # ``max-autotune``, que en GPUs Turing (TITAN RTX) aborta compilando un
+        # kernel de triton (``IndexError: map::at``, job 35606) y en cualquier GPU
+        # agrega minutos de compilación al primer chunk. El harness corre en eager.
+        config.compile_model = False
         if torch_dtype is not None:
             precision = {torch.bfloat16: "bfloat16", torch.float32: "float32"}.get(torch_dtype)
             if precision is None:
                 raise ValueError(f"π0 solo soporta bfloat16 o float32, no {torch_dtype}.")
-            # Se carga por la clase BASE del registro (``PreTrainedConfig``), no por
-            # la subclase ``PI0Config``: ``PreTrainedConfig.from_pretrained`` consume
-            # el discriminador ``"type": "pi0"`` del ``config.json`` para elegir la
-            # subclase y devuelve igual un ``PI0Config``. Llamar ``from_pretrained``
-            # sobre la subclase pasa por un atajo de LeRobot (``draccus.parse(cls)``)
-            # que con draccus 0.8 no consume ese ``type`` y revienta con
-            # ``DecodingError: The fields 'type' are not valid for PI0Config``.
-            # ``PreTrainedConfig.from_pretrained`` devuelve en runtime un ``PI0Config``
-            # (lo elige por el ``type``); el ``cast`` es solo para el tipado de ``dtype``.
-            config = cast(PI0Config, PreTrainedConfig.from_pretrained(str(source)))
             config.dtype = precision
 
         # El tokenizer primero: si falta el acceso a HF, falla antes de cargar ~7 GB.

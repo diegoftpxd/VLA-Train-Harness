@@ -17,8 +17,6 @@ cluster, pasá --learner-config apuntando a un YAML con un modelo real
 flujo de 3 procesos no cambia.
 """
 
-
-
 from __future__ import annotations
 
 import argparse

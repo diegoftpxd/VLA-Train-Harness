@@ -1,49 +1,19 @@
-"""Interfaz ``Environment`` y su alrededor: registro y cliente ZeroMQ.
+"""Lado de Core del Environment: registro de ambientes y cliente ZeroMQ.
 
-Definido en ``docs/core/Core Design.md`` y ``docs/Architecture.md``. Un
-Environment es un ambiente real o simulado con API tipo Gymnasium. Core lo
-consume: nunca ejecuta física, solo enruta. La recompensa la agrega Core, así
-que ``step`` devuelve el ``StepResult`` con ``reward=None``.
+Definido en ``docs/core/Core Design.md``. El contrato (``Environment``,
+``EnvSpec``) y el protocolo (``handle_environment``) viven en
+``vla_common.environment``, compartidos con ``vla_env``, que implementa y sirve
+los ambientes. Core nunca ejecuta física, solo enruta. La recompensa la agrega
+Core, así que ``step`` devuelve el ``StepResult`` con ``reward=None``.
 """
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import Any
-
 from vla_common import wire
+from vla_common.environment import Environment, EnvSpec, spec_from_wire
 from vla_common.types import ActionChunk, Observation, StepResult
 from vla_core.errors import DownstreamTimeout, UnknownEnvironment
 from vla_core.rpc import RpcChannel
-
-
-@dataclass
-class EnvSpec:
-    """Lo que un ambiente declara al registrarse: dimensión de acción y cámaras."""
-
-    action_dim: int
-    cameras: list[str]
-
-
-class Environment(ABC):
-    @abstractmethod
-    def reset(self, task: str | None, seed: int | None) -> Observation: ...
-
-    @abstractmethod
-    def step(self, actions: ActionChunk) -> StepResult:
-        """Ejecuta el chunk y devuelve el ``StepResult`` con ``reward=None``."""
-
-    @abstractmethod
-    def close(self) -> None: ...
-
-    @abstractmethod
-    def emergency_stop(self) -> None:
-        """Parada de seguridad del robot real; no-op en simuladores."""
-
-    @property
-    @abstractmethod
-    def spec(self) -> EnvSpec: ...
 
 
 class EnvironmentRegistry:
@@ -87,29 +57,6 @@ class EnvironmentRegistry:
         return sorted(self._envs)
 
 
-# -- Protocolo ZeroMQ del Environment ---------------------------------------
-
-
-def handle_environment(request: dict[str, Any], env: Environment) -> dict[str, Any]:
-    """Despacha un request del protocolo de Environment contra ``env``."""
-    call = request["call"]
-    if call == "reset":
-        obs = env.reset(request["task"], request["seed"])
-        return {"observation": wire.observation_to_wire(obs)}
-    if call == "step":
-        result = env.step(wire.action_chunk_from_wire(request["actions"]))
-        return {"result": wire.step_result_to_wire(result)}
-    if call == "close":
-        env.close()
-        return {}
-    if call == "emergency_stop":
-        env.emergency_stop()
-        return {}
-    if call == "spec":
-        return {"spec": {"action_dim": env.spec.action_dim, "cameras": list(env.spec.cameras)}}
-    raise ValueError(f"Llamada desconocida de Environment: {call!r}")
-
-
 class EnvironmentClient(Environment):
     """Habla el protocolo de un Environment por un ``RpcChannel`` (``DEALER``)."""
 
@@ -147,6 +94,5 @@ class EnvironmentClient(Environment):
     @property
     def spec(self) -> EnvSpec:
         if self._spec is None:
-            data = self._channel.call({"call": "spec"})["spec"]
-            self._spec = EnvSpec(action_dim=data["action_dim"], cameras=list(data["cameras"]))
+            self._spec = spec_from_wire(self._channel.call({"call": "spec"})["spec"])
         return self._spec

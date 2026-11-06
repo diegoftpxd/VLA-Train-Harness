@@ -1,0 +1,20 @@
+# Proceso Environment con LIBERO para el π0 ya ajustado de LeRobot
+# (`lerobot/pi0_libero_finetuned_v044`, ver configs/pi0_libero_finetuned_eval.yaml).
+# Igual que configs/env/libero.yaml, salvo los nombres de las cámaras: ese modelo
+# se entrenó sobre HuggingFaceVLA/libero, cuyas cámaras se llaman
+# `observation.images.image` (vista general) y `observation.images.image2` (muñeca).
+# π0 busca cada imagen por esa clave; con otro nombre la daría por ausente y la
+# enmascararía (actuaría a ciegas).
+#
+# Videos: `vla-env --config ... --record DIR` graba un MP4 por episodio (un cuadro
+# por acción, las dos cámaras lado a lado). Todo junto: slurm/pi0_libero_video.sbatch
+server: { address: "tcp://127.0.0.1:5601" }
+environment:
+  type: libero
+  suites: [libero_spatial, libero_object, libero_goal, libero_10]
+  cameras: # nombre que espera el modelo -> cámara de LIBERO
+    observation.images.image: agentview_image
+    observation.images.image2: robot0_eye_in_hand_image
+  image_size: 256
+  smoke_action: [0, 0, 0, 0, 0, 0, -1] # no-op de LIBERO (gripper abierto)
+  # record: { dir: out/videos, fps: 20 }  # o --record DIR (fps por defecto: 20, el control de LIBERO)

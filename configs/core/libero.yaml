@@ -1,0 +1,18 @@
+# Core conectado a procesos Environment de LIBERO (vla-env), resto de
+# componentes fake. Lo usa la evaluación de π0 en LIBERO
+# (docs/environment/Environment Implementation Plan.md, fase 6).
+#
+#     UV_PROJECT_ENVIRONMENT=.venv-env uv run --extra libero \
+#         vla-env --config configs/env/libero.yaml --address tcp://127.0.0.1:5601
+#     UV_PROJECT_ENVIRONMENT=.venv-env uv run --extra libero \
+#         vla-env --config configs/env/libero.yaml --address tcp://127.0.0.1:5602
+#     UV_PROJECT_ENVIRONMENT=.venv-core uv run vla-core --config configs/core/libero.yaml
+#
+# Timeout de 30 s: un reset de LIBERO crea el simulador (si cambia la tarea) y
+# da 10 pasos de asentamiento; supera los 5 s por defecto.
+server: { address: "tcp://127.0.0.1:5555" }
+backend: { type: fake }
+environments:
+  - { id: libero-0, address: "tcp://127.0.0.1:5601" }
+  - { id: libero-1, address: "tcp://127.0.0.1:5602" }
+timeouts: { environment_s: 30, retries: 1 }
