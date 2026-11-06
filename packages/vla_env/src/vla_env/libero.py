@@ -167,9 +167,15 @@ class LiberoEnvironment(GymEnvironment):
         ensure_libero_config()
         from libero.libero import (  # pyright: ignore[reportMissingImports]
             benchmark,
+            get_assets_path,
             get_libero_path,
         )
 
+        # Los assets (escenas, objetos) se resuelven acá y no en el primer reset:
+        # si faltan en ``~/.cache/libero/assets``, LIBERO los baja de HF Hub (~2 min),
+        # y dentro de un reset eso vence el timeout de Core (job 35608). Antes de
+        # abrir el socket, la espera la cubre el arranque del proceso.
+        get_assets_path()
         self._get_libero_path = get_libero_path
         disponibles = benchmark.get_benchmark_dict()
         desconocidas = [s for s in suites if s not in disponibles]
